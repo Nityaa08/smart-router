@@ -1,4 +1,4 @@
-.PHONY: dev stop migrate test logs clean
+.PHONY: dev stop migrate test unit-test logs clean
 
 dev:
 	@echo "Starting Smart Router (Postgres + Redis + API)..."
@@ -40,6 +40,10 @@ test:
 	@echo ""
 	@echo "Analytics:"
 	@curl -sf http://localhost:8000/analytics | python3 -m json.tool
+
+unit-test:
+	@echo "Running unit tests (no services required)..."
+	cd backend && python -m pytest tests/ -v
 
 logs:
 	docker compose logs -f api

@@ -1,6 +1,8 @@
 # Smart Router
 
-> **An AI gateway that routes every prompt to the cheapest model capable of answering it — and proves the savings in real time.**
+[![CI](https://github.com/Nityaa08/smart-router/actions/workflows/ci.yml/badge.svg)](https://github.com/Nityaa08/smart-router/actions/workflows/ci.yml)
+
+> **An AI cost-control gateway that routes every prompt to the cheapest model capable of answering it — and proves the savings in real time.**
 
 ---
 
@@ -42,7 +44,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"What is 2+2?"}]}'
 
-# Response:
+# Response headers:
 # X-Router-Tier:  simple
 # X-Router-Model: llama3.2:1b
 # X-Cost-Saved:   0.00016959
@@ -69,6 +71,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 | **Cost analytics dashboard** | `GET /analytics` — total saved, savings %, per-tier breakdown |
 | **Fallback escalation** | Provider fails → automatically escalates to next tier |
 | **Live dashboard** | Built-in UI at `/` showing real-time routing distribution and cost savings |
+| **47 unit tests** | Full test coverage of classifier heuristics and cost calculation logic |
 
 ---
 
@@ -83,8 +86,8 @@ ollama serve                   # keep this running in a terminal
 ollama pull llama3.2:1b
 ollama pull llama3.1:8b
 
-# 2. Start the stack
-git clone https://github.com/your-username/smart-router
+# 2. Clone and start the stack
+git clone https://github.com/Nityaa08/smart-router
 cd smart-router
 cp .env.example .env           # PROVIDER=ollama is already set
 make dev
@@ -93,11 +96,10 @@ make dev
 open http://localhost:8000
 ```
 
-### Option B — OpenRouter (free cloud, recommended for deployment)
+### Option B — OpenRouter (free cloud, no credit card needed)
 
 ```bash
-# 1. Sign up at openrouter.ai (email + password, no credit card)
-#    Go to Keys → Create Key
+# 1. Sign up at openrouter.ai → Keys → Create Key
 
 # 2. Edit .env:
 PROVIDER=openrouter
@@ -122,14 +124,14 @@ make dev
 
 ## How the Classifier Works
 
-No LLM is called for classification. A scoring function evaluates signals:
+No LLM is called for classification. A scoring function evaluates signals in <1ms:
 
 | Signal | Points |
 |---|---|
 | Token count < 100 | +2 (simple signal) |
 | Keywords: "what is", "define", "translate", "summarize" | +2 |
 | Keywords: "explain", "compare", "analyze", "write a" | +1 |
-| Code patterns (``` `, `def`, `class`, `function`) | +2 |
+| Code patterns (` ``` `, `def`, `class`, `function`) | +2 |
 | Multi-step patterns ("first… then…", numbered steps) | +2 |
 | Math/logic ("prove", "derive", "algorithm", "complexity") | +2 |
 | Token count > 500 | +2 (complex signal) |
@@ -187,35 +189,43 @@ Response includes a `router` field:
 
 ---
 
-## Deployment (Railway)
+## Running Tests
 
-> **Note:** Ollama is local-only. For cloud deployment, use OpenRouter or Groq.
-
-### 1. Get a free API key
-- **OpenRouter** (recommended): [openrouter.ai](https://openrouter.ai) — no credit card
-- **Groq**: [console.groq.com](https://console.groq.com)
-
-### 2. Push to GitHub
 ```bash
-cd smart-router
-git init && git add . && git commit -m "initial"
-gh repo create smart-router --public --push --source=.
+# Unit tests (no database or LLM required — runs in CI)
+make unit-test
+
+# Integration smoke tests (requires running stack)
+make test
 ```
 
-### 3. Deploy on Railway
-1. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
-2. Select your `smart-router` repo
-3. Add plugins: **PostgreSQL** and **Redis**
-4. Set environment variables:
+The unit test suite covers the heuristic classifier and all cost calculation logic with 47 tests, zero external dependencies.
 
-| Variable | Value |
+---
+
+## Self-Hosting with Docker
+
+The included `Dockerfile` builds a production-ready image. You can run it on any Docker host:
+
+```bash
+# Build
+docker build -t smart-router ./backend
+
+# Run with Postgres and Redis
+docker compose up --build -d
+```
+
+Environment variables:
+
+| Variable | Description |
 |---|---|
-| `PROVIDER` | `openrouter` |
-| `OPENROUTER_API_KEY` | your key |
-| `DATABASE_URL` | auto-filled by Railway Postgres plugin |
-| `REDIS_URL` | auto-filled by Railway Redis plugin |
+| `PROVIDER` | `ollama` \| `openrouter` \| `groq` \| `openai_compat` |
+| `OPENROUTER_API_KEY` | Required for OpenRouter |
+| `GROQ_API_KEY` | Required for Groq |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string |
 
-5. Deploy → Railway builds the Docker image, runs migrations, starts the server.
+See `.env.example` for the full list.
 
 ---
 
@@ -223,19 +233,23 @@ gh repo create smart-router --public --push --source=.
 
 ```
 smart-router/
-├── railway.toml              # Railway deployment config
 ├── docker-compose.yml        # Local dev: Postgres + Redis + API
-├── .env.example              # Copy to .env
-├── Makefile                  # make dev / test / logs / clean
+├── .env.example              # Copy to .env, fill in API key
+├── Makefile                  # make dev / test / unit-test / logs / clean
+├── .github/
+│   └── workflows/ci.yml      # CI: unit tests + Docker build on every push
 └── backend/
     ├── Dockerfile            # Production-ready (non-root, healthcheck, auto-migrate)
     ├── start.sh              # Runs migrations then starts server
     ├── requirements.txt
     ├── alembic.ini
-    ├── migrations/
+    ├── migrations/           # Alembic schema migrations
+    ├── tests/
+    │   ├── test_classifier.py  # 30 classifier unit tests
+    │   └── test_config.py      # 17 config/cost-calc unit tests
     └── app/
         ├── main.py           # FastAPI app (CORS, rate limiting, static files)
-        ├── config.py         # Settings + DATABASE_URL scheme fix for Railway
+        ├── config.py         # Settings + DATABASE_URL scheme normalizer
         ├── database.py       # Async SQLAlchemy
         ├── classifier/       # Zero-cost heuristic scorer
         ├── providers/        # Ollama · Groq · OpenRouter · Generic OpenAI-compat
@@ -250,8 +264,9 @@ smart-router/
 ## Commands
 
 ```bash
-make dev          # build and start everything
-make test         # smoke tests against all endpoints
+make dev          # build and start everything (Postgres + Redis + API)
+make unit-test    # run unit tests locally (no services needed)
+make test         # end-to-end smoke tests against all endpoints
 make logs         # tail API logs
 make stop         # stop containers (keep data)
 make clean        # stop + wipe database
@@ -264,8 +279,9 @@ make clean        # stop + wipe database
 | Layer | Technology |
 |---|---|
 | API | FastAPI (async) |
-| Database | PostgreSQL + SQLAlchemy (async) + Alembic |
-| Cache | Redis |
-| LLMs | Ollama / OpenRouter / Groq / Any OpenAI-compatible |
-| Classifier | Heuristic rules (zero cost) |
-| Infrastructure | Docker Compose (local) · Railway (cloud) |
+| Database | PostgreSQL 16 + SQLAlchemy 2.0 (async) + Alembic |
+| Cache | Redis 7 |
+| LLMs | Ollama · OpenRouter · Groq · Any OpenAI-compatible endpoint |
+| Classifier | Heuristic rules (zero cost, <1ms) |
+| Infrastructure | Docker Compose |
+| CI | GitHub Actions (unit tests + Docker build) |
