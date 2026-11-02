@@ -1,13 +1,14 @@
 import uuid
 import json
 import logging
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from ..schemas.request import ChatRequest
 from ..router.engine import route, route_stream
+from ..security import limiter, rate_limit, require_api_key
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
 
 
 def _get_redis(request: Request):
@@ -19,29 +20,50 @@ def _err(status: int, detail: str) -> JSONResponse:
 
 
 @router.post("/v1/chat/completions")
+@limiter.limit(rate_limit)
 async def chat_completions(body: ChatRequest, request: Request):
     messages = [m.model_dump() for m in body.messages]
     redis = _get_redis(request)
 
     # ── Streaming ─────────────────────────────────────────────────────────────
     if body.stream:
-        stream_iter, tier, model = await route_stream(
-            messages,
-            force_tier=body.force_tier,
-            temperature=body.temperature,
-            max_tokens=body.max_tokens,
-        )
+        try:
+            stream_iter, tier, model = await route_stream(
+                messages,
+                force_tier=body.force_tier,
+                temperature=body.temperature,
+                max_tokens=body.max_tokens,
+            )
+            # Pull the first chunk before sending headers, so a provider that
+            # is down returns a 503 instead of an empty 200 stream.
+            first_chunk = await anext(stream_iter, None)
+        except Exception as e:
+            logger.warning("Streaming provider failed: %s", e)
+            return _err(503, str(e) or e.__class__.__name__)
+
+        completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+
+        def _chunk(delta: dict, finish_reason: str | None = None) -> str:
+            data = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [{"delta": delta, "index": 0, "finish_reason": finish_reason}],
+            }
+            return f"data: {json.dumps(data)}\n\n"
 
         async def sse_generator():
-            completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
-            async for chunk in await stream_iter:
-                data = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "model": model,
-                    "choices": [{"delta": {"content": chunk}, "index": 0, "finish_reason": None}],
-                }
-                yield f"data: {json.dumps(data)}\n\n"
+            try:
+                if first_chunk is not None:
+                    yield _chunk({"role": "assistant", "content": first_chunk})
+                async for chunk in stream_iter:
+                    yield _chunk({"content": chunk})
+                yield _chunk({}, finish_reason="stop")
+            except Exception as e:
+                # Headers are already sent; report the error in-band.
+                logger.warning("Stream interrupted: %s", e)
+                err = {"error": {"message": str(e) or e.__class__.__name__, "type": "router_error"}}
+                yield f"data: {json.dumps(err)}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(

@@ -502,6 +502,20 @@ textarea::placeholder{color:var(--t4)}
 </div>
 
 <script>
+// If the server sets ROUTER_API_KEY, ask for it once and keep it in this browser.
+let apiKey=(()=>{try{return localStorage.getItem('sr_api_key')||'';}catch{return '';}})();
+let keyDeclined=false;
+async function apiFetch(url,opts={},retry=true){
+  const headers={...(opts.headers||{})};
+  if(apiKey)headers['Authorization']=`Bearer ${apiKey}`;
+  const r=await fetch(url,{...opts,headers});
+  if(r.status===401&&retry&&!keyDeclined){
+    const k=window.prompt('This Smart Router needs an API key (ROUTER_API_KEY):');
+    if(k){apiKey=k.trim();try{localStorage.setItem('sr_api_key',apiKey);}catch{}return apiFetch(url,opts,false);}
+    keyDeclined=true;
+  }
+  return r;
+}
 let ft=null,slog=[];
 
 function setTier(t,btn){
@@ -529,7 +543,7 @@ async function send(){
   addU(txt);
   const tid=addThink();
   try{
-    const r=await fetch('/v1/chat/completions',{
+    const r=await apiFetch('/v1/chat/completions',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:[{role:'user',content:txt}],force_tier:ft})
     });
@@ -610,7 +624,7 @@ function renderLog(){
 
 async function loadA(){
   try{
-    const d=await fetch('/analytics').then(r=>r.json());
+    const d=await apiFetch('/analytics').then(r=>r.json());
     const tot=d.total_requests||0;
     const pct=d.savings_pct??0;
     document.getElementById('h-pct').textContent=pct>=1?`${pct.toFixed(1)}%`:'—';

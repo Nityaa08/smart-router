@@ -16,15 +16,20 @@ class Settings(BaseSettings):
 
     # Groq
     groq_api_key: str = ""
-    groq_simple_model: str = "llama3-8b-8192"
-    groq_medium_model: str = "llama3-70b-8192"
-    groq_complex_model: str = "llama3-70b-8192"
+    # Groq production models, checked 2026-11-02 (console.groq.com/docs/models).
+    # llama3-*-8192 were shut down 2025-08-30; llama-3.1-8b-instant and
+    # llama-3.3-70b-versatile on 2026-08-16 (free/developer tiers).
+    groq_simple_model: str = "openai/gpt-oss-20b"
+    groq_medium_model: str = "openai/gpt-oss-120b"
+    groq_complex_model: str = "openai/gpt-oss-120b"
 
     # OpenRouter (free models — sign up at openrouter.ai, no credit card)
     openrouter_api_key: str = ""
-    openrouter_simple_model: str = "meta-llama/llama-3.2-1b-instruct:free"
-    openrouter_medium_model: str = "meta-llama/llama-3.1-8b-instruct:free"
-    openrouter_complex_model: str = "meta-llama/llama-3.1-8b-instruct:free"
+    # Free models listed by openrouter.ai/api/v1/models?max_price=0 on 2026-11-02.
+    # OpenRouter's free list changes often; re-check it if requests return 404.
+    openrouter_simple_model: str = "google/gemma-4-26b-a4b-it:free"
+    openrouter_medium_model: str = "google/gemma-4-31b-it:free"
+    openrouter_complex_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
     # Generic OpenAI-compatible (Cerebras, Together AI, etc.)
     openai_compat_base_url: str = ""
@@ -40,7 +45,10 @@ class Settings(BaseSettings):
     # App
     log_level: str = "INFO"
     cors_origins: str = "*"          # comma-separated list or "*"
-    rate_limit: str = "60/minute"
+    rate_limit: str = "60/minute"    # per client IP, applied to every route
+    # Optional shared secret. When set, /v1/* and /analytics require
+    # "Authorization: Bearer <key>" (or "X-API-Key: <key>").
+    router_api_key: str = ""
 
     class Config:
         env_file = ".env"
@@ -64,24 +72,28 @@ def get_settings() -> Settings:
 
 
 # ─── Reference Pricing (USD per 1M tokens) ───────────────────────────────────
+# Hard-coded list prices. Groq prices checked 2026-11-02 at
+# console.groq.com/docs/models; GPT-4o is OpenAI's list price. Ollama prices are
+# assumptions for local inference, not quotes.
 MODEL_PRICING: dict[str, dict[str, float]] = {
-    # Ollama (local — near-zero cost)
+    # Ollama (local — assumed near-zero cost)
     "llama3.2:1b":       {"input": 0.01,  "output": 0.01},
     "llama3.1:8b":       {"input": 0.05,  "output": 0.05},
     "llama3.1:70b":      {"input": 0.59,  "output": 0.79},
     # Groq
-    "llama3-8b-8192":    {"input": 0.05,  "output": 0.08},
-    "llama3-70b-8192":   {"input": 0.59,  "output": 0.79},
-    # OpenRouter free models
-    "meta-llama/llama-3.2-1b-instruct:free": {"input": 0.0,  "output": 0.0},
-    "meta-llama/llama-3.1-8b-instruct:free": {"input": 0.0,  "output": 0.0},
+    "openai/gpt-oss-20b":  {"input": 0.075, "output": 0.30},
+    "openai/gpt-oss-120b": {"input": 0.15,  "output": 0.60},
     # Baseline reference
     "gpt-4o":            {"input": 2.50,  "output": 10.00},
 }
+# Any OpenRouter model ID ending in ":free" is priced at 0 (see calculate_cost).
 
 BASELINE_MODEL = "gpt-4o"
 
 
 def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    pricing = MODEL_PRICING.get(model, MODEL_PRICING["gpt-4o"])
+    if model.endswith(":free"):
+        return 0.0
+    # Unknown models are priced as the baseline, so they show no saving.
+    pricing = MODEL_PRICING.get(model, MODEL_PRICING[BASELINE_MODEL])
     return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000

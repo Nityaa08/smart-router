@@ -7,13 +7,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from .config import get_settings
 from .database import engine
 from .api import chat, analytics, health
+from .security import limiter
 
 cfg = get_settings()
 
@@ -23,10 +23,6 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-# ── Rate limiter ──────────────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address, default_limits=[cfg.rate_limit])
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +51,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limit: RATE_LIMIT per client IP on POST /v1/chat/completions (api/chat.py)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

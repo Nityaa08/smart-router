@@ -22,24 +22,27 @@ migrate:
 migrate-new:
 	docker compose exec api alembic revision --autogenerate -m "$(MSG)"
 
+# If ROUTER_API_KEY is set, run as: make test ROUTER_API_KEY=your-key
+AUTH = $(if $(ROUTER_API_KEY),-H "Authorization: Bearer $(ROUTER_API_KEY)",)
+
 test:
 	@echo "Running smoke tests..."
 	@curl -sf http://localhost:8000/health | python3 -m json.tool
 	@echo ""
 	@echo "Simple prompt (expect tier=simple):"
-	@curl -sf -X POST http://localhost:8000/v1/chat/completions \
+	@curl -sf -X POST http://localhost:8000/v1/chat/completions $(AUTH) \
 		-H "Content-Type: application/json" \
 		-d '{"messages":[{"role":"user","content":"What is 2+2?"}]}' \
-		-D - 2>&1 | grep -E "X-Router|HTTP"
+		-D - 2>&1 | grep -iE "x-router|HTTP"
 	@echo ""
 	@echo "Complex prompt (expect tier=complex):"
-	@curl -sf -X POST http://localhost:8000/v1/chat/completions \
+	@curl -sf -X POST http://localhost:8000/v1/chat/completions $(AUTH) \
 		-H "Content-Type: application/json" \
 		-d '{"messages":[{"role":"user","content":"Implement a recursive algorithm to find all permutations of a list in Python. First analyze the complexity, then write the code with tests."}]}' \
-		-D - 2>&1 | grep -E "X-Router|HTTP"
+		-D - 2>&1 | grep -iE "x-router|HTTP"
 	@echo ""
 	@echo "Analytics:"
-	@curl -sf http://localhost:8000/analytics | python3 -m json.tool
+	@curl -sf http://localhost:8000/analytics $(AUTH) | python3 -m json.tool
 
 unit-test:
 	@echo "Running unit tests (no services required)..."
