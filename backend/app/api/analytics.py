@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, case
 from ..database import get_db
 from ..models.request_log import RequestLog
 from ..schemas.response import AnalyticsResponse, TierStats
+from ..security import require_api_key
+from ..router.engine import CACHE_HIT_STATUS
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
+
+# Average latency over real provider calls only; cache hits (latency 0) are excluded.
+_provider_latency = case((RequestLog.status != CACHE_HIT_STATUS, RequestLog.latency_ms))
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)
@@ -17,7 +22,7 @@ async def get_analytics(db: AsyncSession = Depends(get_db)):
             func.coalesce(func.sum(RequestLog.actual_cost), 0).label("actual_cost"),
             func.coalesce(func.sum(RequestLog.baseline_cost), 0).label("baseline_cost"),
             func.coalesce(func.sum(RequestLog.cost_saved), 0).label("cost_saved"),
-            func.coalesce(func.avg(RequestLog.latency_ms), 0).label("avg_latency"),
+            func.coalesce(func.avg(_provider_latency), 0).label("avg_latency"),
         )
     )
     row = totals.one()
@@ -36,7 +41,7 @@ async def get_analytics(db: AsyncSession = Depends(get_db)):
             func.coalesce(func.sum(RequestLog.actual_cost), 0).label("actual_cost"),
             func.coalesce(func.sum(RequestLog.baseline_cost), 0).label("baseline_cost"),
             func.coalesce(func.sum(RequestLog.cost_saved), 0).label("cost_saved"),
-            func.coalesce(func.avg(RequestLog.latency_ms), 0).label("avg_latency"),
+            func.coalesce(func.avg(_provider_latency), 0).label("avg_latency"),
         ).group_by(RequestLog.difficulty)
     )
 
@@ -50,9 +55,9 @@ async def get_analytics(db: AsyncSession = Depends(get_db)):
             avg_latency_ms=float(t.avg_latency),
         )
 
-    # Cache hits: rows with latency_ms = 0 (cache hits are logged separately — here we count status)
+    # Cache hits are logged with status "cache_hit" (see router/engine.py)
     cache_result = await db.execute(
-        select(func.count(RequestLog.id)).where(RequestLog.latency_ms == 0)
+        select(func.count(RequestLog.id)).where(RequestLog.status == CACHE_HIT_STATUS)
     )
     cache_hits = cache_result.scalar() or 0
 

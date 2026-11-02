@@ -1,6 +1,7 @@
 """
 Routing engine: classify → select provider → call LLM → log result.
 """
+import asyncio
 import time
 import hashlib
 import json
@@ -97,7 +98,7 @@ def prompt_hash(messages: list[dict]) -> str:
 
 
 async def _log_request(
-    classification: ClassifierResult,
+    tier: str,
     model: str,
     provider: str,
     input_tokens: int,
@@ -112,7 +113,7 @@ async def _log_request(
     async with AsyncSessionLocal() as session:
         log = RequestLog(
             id=uuid.uuid4(),
-            difficulty=classification.tier,
+            difficulty=tier,
             model_used=model,
             provider=provider,
             input_tokens=input_tokens,
@@ -126,6 +127,25 @@ async def _log_request(
         )
         session.add(log)
         await session.commit()
+
+
+CACHE_HIT_STATUS = "cache_hit"
+
+# Keep references so fire-and-forget log tasks are not garbage-collected.
+_log_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_log(**kwargs) -> None:
+    """Write the request log in the background without blocking the response."""
+    task = asyncio.create_task(_log_request(**kwargs))
+    _log_tasks.add(task)
+    task.add_done_callback(_on_log_done)
+
+
+def _on_log_done(task: asyncio.Task) -> None:
+    _log_tasks.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        logger.warning("Failed to write request log: %s", task.exception())
 
 
 async def route(
@@ -163,16 +183,32 @@ async def route(
                 ),
                 raw={},
             )
+            # A cache hit makes no provider call: it costs nothing, and the
+            # whole GPT-4o baseline for those tokens counts as saved.
+            baseline_cost = data["baseline_cost"]
+            _schedule_log(
+                tier=data["tier"],
+                model=data["model"],
+                provider=data["provider"],
+                input_tokens=data["input_tokens"],
+                output_tokens=data["output_tokens"],
+                actual_cost=0.0,
+                baseline_cost=baseline_cost,
+                cost_saved=baseline_cost,
+                latency_ms=0,
+                status=CACHE_HIT_STATUS,
+                phash=phash,
+            )
             return RouterResult(
                 response=resp,
                 tier=data["tier"],
                 provider_name=data["provider"],
-                actual_cost=data["actual_cost"],
-                baseline_cost=data["baseline_cost"],
-                cost_saved=data["cost_saved"],
+                actual_cost=0.0,
+                baseline_cost=baseline_cost,
+                cost_saved=baseline_cost,
                 latency_ms=0,
                 from_cache=True,
-                status="success",
+                status=CACHE_HIT_STATUS,
             )
 
     # ── Classify ─────────────────────────────────────────────────────────────
@@ -211,9 +247,8 @@ async def route(
     cost_saved = max(0.0, baseline_cost - actual_cost)
 
     # ── Async DB log (don't block response) ─────────────────────────────────
-    import asyncio
-    asyncio.create_task(_log_request(
-        classification=classification,
+    _schedule_log(
+        tier=classification.tier,
         model=provider_obj.model_name,
         provider=provider_obj.provider_name,
         input_tokens=response.usage.input_tokens,
@@ -224,7 +259,7 @@ async def route(
         latency_ms=latency_ms,
         status=status,
         phash=phash,
-    ))
+    )
 
     # ── Cache store ──────────────────────────────────────────────────────────
     if redis_client:
