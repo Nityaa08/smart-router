@@ -45,7 +45,8 @@ class Settings(BaseSettings):
     # App
     log_level: str = "INFO"
     cors_origins: str = "*"          # comma-separated list or "*"
-    rate_limit: str = "60/minute"    # per client IP, applied to every route
+    rate_limit: str = "60/minute"    # per API key (or per client IP) on POST /v1/chat/completions
+    rate_limit_storage: str = "memory://"  # set to a redis:// URL to share counts across workers
     # Optional shared secret. When set, /v1/* and /analytics require
     # "Authorization: Bearer <key>" (or "X-API-Key: <key>").
     router_api_key: str = ""
