@@ -191,6 +191,50 @@ class TestRateLimit:
         for _ in range(3):
             assert client.get("/").status_code == 200
 
+    def test_each_api_key_gets_its_own_limit(self, client, settings):
+        # Two callers behind the same IP, each with their own key, don't share a count.
+        settings.rate_limit = "2/minute"
+        a = {"X-API-Key": "key-a"}
+        b = {"Authorization": "Bearer key-b"}
+        assert [chat(client, headers=a).status_code for _ in range(3)] == [200, 200, 429]
+        assert [chat(client, headers=b).status_code for _ in range(2)] == [200, 200]
+
+    def test_requests_without_a_key_are_limited_by_ip(self, client, settings):
+        settings.rate_limit = "1/minute"
+        assert [chat(client).status_code for _ in range(2)] == [200, 429]
+        # A keyed request from the same IP is counted separately.
+        assert chat(client, headers={"X-API-Key": "key-c"}).status_code == 200
+
+
+class TestRateLimitKey:
+    def _request(self, headers):
+        from starlette.requests import Request
+        scope = {"type": "http", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+                 "client": ("203.0.113.7", 1234)}
+        return Request(scope)
+
+    def test_key_is_hashed_never_raw(self):
+        from app.security import rate_limit_key
+        k = rate_limit_key(self._request({"X-API-Key": "super-secret"}))
+        assert k.startswith("key:") and "super-secret" not in k
+
+    def test_bearer_and_header_forms_match(self):
+        from app.security import rate_limit_key
+        assert rate_limit_key(self._request({"X-API-Key": "abc"})) == \
+            rate_limit_key(self._request({"Authorization": "Bearer abc"}))
+
+    def test_falls_back_to_ip(self):
+        from app.security import rate_limit_key
+        assert rate_limit_key(self._request({})) == "ip:203.0.113.7"
+
+
+class TestRateLimitStorage:
+    def test_defaults_to_in_memory_with_fallback(self):
+        from app.security import limiter
+        from app.config import get_settings
+        assert get_settings().rate_limit_storage == "memory://"
+        assert limiter._in_memory_fallback_enabled is True
+
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 

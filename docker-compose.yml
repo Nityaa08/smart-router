@@ -34,6 +34,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://smartrouter:smartrouter@db:5432/smartrouter
       REDIS_URL: redis://redis:6379
+      RATE_LIMIT_STORAGE: redis://redis:6379
     depends_on:
       db:
         condition: service_healthy
