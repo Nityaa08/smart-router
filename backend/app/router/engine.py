@@ -289,15 +289,48 @@ async def route(
     )
 
 
+@dataclass
+class OpenStream:
+    """A stream whose provider has already produced its first chunk."""
+    first_chunk: str | None
+    rest: AsyncIterator[str]
+    tier: Tier            # the tier that is actually answering
+    requested_tier: Tier  # the tier the classifier (or force_tier) picked
+    model: str
+
+    @property
+    def fell_back(self) -> bool:
+        return self.tier != self.requested_tier
+
+
 async def route_stream(
     messages: list[dict],
     force_tier: Tier | None = None,
     temperature: float = 0.7,
     max_tokens: int | None = None,
-) -> tuple[AsyncIterator[str], Tier, str]:
-    """Returns (stream_iterator, tier, model_name)."""
+) -> OpenStream:
+    """
+    Opens a stream with the same tier fallback as route(): if a provider fails before
+    sending its first chunk, the next tier up is tried. Pulling the first chunk here means
+    a provider that is down is detected before any response headers go out.
+    Raises RuntimeError if every tier fails.
+    """
     providers = get_providers()
     classification = classify(messages)
     tier: Tier = force_tier or classification.tier
-    provider = providers[tier]
-    return provider.stream(messages, temperature=temperature, max_tokens=max_tokens), tier, provider.model_name
+
+    errors: list[str] = []
+    for attempt_tier in TIER_ESCALATION[TIER_ESCALATION.index(tier):]:
+        provider = providers[attempt_tier]
+        try:
+            it = provider.stream(messages, temperature=temperature, max_tokens=max_tokens)
+            first = await anext(it, None)
+        except Exception as exc:
+            logger.warning("Streaming provider %s/%s failed: %s", attempt_tier, provider.model_name, exc)
+            errors.append(f"{attempt_tier}: {exc or exc.__class__.__name__}")
+            continue
+        if attempt_tier != tier:
+            logger.warning("Stream fell back from %s to %s", tier, attempt_tier)
+        return OpenStream(first, it, attempt_tier, tier, provider.model_name)
+
+    raise RuntimeError("All providers failed for the stream (" + "; ".join(errors) + ")")

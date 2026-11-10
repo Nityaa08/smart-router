@@ -155,11 +155,34 @@ class TestStreaming:
         assert text == "Hello world"
         assert events[-2]["choices"][0]["finish_reason"] == "stop"
 
-    def test_stream_provider_down_returns_503(self, client, providers):
+    def test_stream_falls_back_to_next_tier(self, client, providers):
         providers["simple"].fail = True
         r = chat(client, stream=True)
+        assert r.status_code == 200
+        assert r.headers["x-router-tier"] == "medium"
+        assert r.headers["x-router-model"] == "mid-model"
+        assert r.headers["x-router-fallback"] == "true"
+        events = _sse_events(r.text)
+        assert "".join(e["choices"][0]["delta"].get("content", "") for e in events[:-1]) == "Hello world"
+
+    def test_stream_without_fallback_says_so(self, client):
+        r = chat(client, stream=True)
+        assert r.headers["x-router-tier"] == "simple"
+        assert r.headers["x-router-fallback"] == "false"
+
+    def test_stream_all_providers_down_returns_503(self, client, providers):
+        for p in providers.values():
+            p.fail = True
+        r = chat(client, stream=True)
         assert r.status_code == 503
-        assert "provider down" in r.json()["error"]["message"]
+        msg = r.json()["error"]["message"]
+        assert "All providers failed" in msg and "provider down" in msg
+
+    def test_stream_never_falls_back_to_a_cheaper_tier(self, client, providers):
+        # A complex prompt whose provider is down fails rather than dropping to a weaker model.
+        providers["complex"].fail = True
+        r = chat(client, stream=True, force_tier="complex")
+        assert r.status_code == 503
 
 
 # ─── Cache ────────────────────────────────────────────────────────────────────

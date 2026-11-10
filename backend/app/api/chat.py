@@ -28,19 +28,19 @@ async def chat_completions(body: ChatRequest, request: Request):
     # ── Streaming ─────────────────────────────────────────────────────────────
     if body.stream:
         try:
-            stream_iter, tier, model = await route_stream(
+            # route_stream pulls the first chunk before any headers are sent, falling back
+            # to the next tier if a provider is down; only if every tier fails is it a 503.
+            opened = await route_stream(
                 messages,
                 force_tier=body.force_tier,
                 temperature=body.temperature,
                 max_tokens=body.max_tokens,
             )
-            # Pull the first chunk before sending headers, so a provider that
-            # is down returns a 503 instead of an empty 200 stream.
-            first_chunk = await anext(stream_iter, None)
         except Exception as e:
             logger.warning("Streaming provider failed: %s", e)
             return _err(503, str(e) or e.__class__.__name__)
 
+        first_chunk, stream_iter, tier, model = opened.first_chunk, opened.rest, opened.tier, opened.model
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
 
         def _chunk(delta: dict, finish_reason: str | None = None) -> str:
@@ -72,6 +72,7 @@ async def chat_completions(body: ChatRequest, request: Request):
             headers={
                 "X-Router-Tier": tier,
                 "X-Router-Model": model,
+                "X-Router-Fallback": "true" if opened.fell_back else "false",
             },
         )
 
