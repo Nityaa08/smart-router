@@ -72,7 +72,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 | **Live dashboard** | Built-in UI at `/` showing routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **67 unit tests** | Classifier, cost calculation, and the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers; 71% line coverage of the app (measured 2026-11-02) |
+| **76 unit tests** | Classifier, cost calculation, and the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers; 71% line coverage of the app (measured 2026-11-02) |
 
 ---
 
@@ -211,7 +211,7 @@ make unit-test
 make test
 ```
 
-The unit test suite has 67 tests (30 classifier, 22 config/cost/default-model, 15 API) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 76 tests (30 classifier, 22 config/cost/default-model, 24 API) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make test` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make test ROUTER_API_KEY=your-key`.
 
