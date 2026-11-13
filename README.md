@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/Nityaa08/smart-router/actions/workflows/ci.yml/badge.svg)](https://github.com/Nityaa08/smart-router/actions/workflows/ci.yml)
 
-**Live demo: [smart-router-demo.vercel.app](https://smart-router-demo.vercel.app)** (simulated answers, no API key) · by [Nityashree S](https://nityashree.in)
+**Live demo: [smart-router-nityashree.vercel.app](https://smart-router-nityashree.vercel.app)** (simulated answers, no API key) · by [Nityashree S](https://nityashree.in)
 
 > **An OpenAI-compatible LLM gateway that routes each prompt to one of three model tiers using hand-written rules, and estimates the cost of every request.**
 
-[![Demo page: a prompt, the tier it was routed to, the scoring rules that fired and the estimated cost](docs/screenshot.png)](https://smart-router-demo.vercel.app)
+[![Demo page: a prompt, the tier it was routed to, the scoring rules that fired and the estimated cost](docs/screenshot.png)](https://smart-router-nityashree.vercel.app)
 
 ---
 
