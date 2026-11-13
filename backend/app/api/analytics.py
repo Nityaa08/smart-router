@@ -6,6 +6,7 @@ from ..models.request_log import RequestLog
 from ..schemas.response import AnalyticsResponse, TierStats
 from ..security import require_api_key
 from ..router.engine import CACHE_HIT_STATUS
+from ..router import memlog
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
@@ -14,7 +15,10 @@ _provider_latency = case((RequestLog.status != CACHE_HIT_STATUS, RequestLog.late
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)
-async def get_analytics(db: AsyncSession = Depends(get_db)):
+async def get_analytics(db: AsyncSession | None = Depends(get_db)):
+    if db is None:
+        # No database configured: summarise the in-memory log of this process.
+        return AnalyticsResponse(**memlog.summarize(CACHE_HIT_STATUS))
     # Aggregate totals
     totals = await db.execute(
         select(

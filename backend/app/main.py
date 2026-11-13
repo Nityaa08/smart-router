@@ -11,8 +11,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from .config import get_settings
-from .database import engine
-from .api import chat, analytics, health
+from . import database
+from .api import chat, analytics, health, explain
 from .security import limiter
 
 cfg = get_settings()
@@ -26,19 +26,22 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Redis
-    try:
-        app.state.redis = aioredis.from_url(cfg.redis_url, decode_responses=True)
-        await app.state.redis.ping()
-        logger.info("Redis connected.")
-    except Exception as e:
-        logger.warning("Redis unavailable (%s) — caching disabled.", e)
-        app.state.redis = None
+    # Redis (REDIS_URL=none turns the response cache off, e.g. on the serverless demo)
+    app.state.redis = None
+    if cfg.redis_enabled:
+        try:
+            app.state.redis = aioredis.from_url(cfg.redis_url, decode_responses=True)
+            await app.state.redis.ping()
+            logger.info("Redis connected.")
+        except Exception as e:
+            logger.warning("Redis unavailable (%s) — caching disabled.", e)
+            app.state.redis = None
 
     logger.info("Smart Router ready. Provider=%s", cfg.provider)
     yield
 
-    await engine.dispose()
+    if database.engine is not None:
+        await database.engine.dispose()
     if app.state.redis:
         await app.state.redis.aclose()
 
@@ -70,10 +73,18 @@ app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(chat.router)
+app.include_router(explain.router)
 app.include_router(analytics.router)
 app.include_router(health.router)
 
 
 @app.get("/")
 async def root():
+    """Playground: type a prompt, see how it is classified, routed and priced."""
+    return FileResponse(os.path.join(_static_dir, "demo.html"))
+
+
+@app.get("/dashboard")
+async def dashboard():
+    """Cost dashboard over /analytics (Postgres log, or this process's memory log)."""
     return FileResponse(os.path.join(_static_dir, "index.html"))

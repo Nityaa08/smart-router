@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Router</title>
+<meta name="description" content="An OpenAI-compatible LLM gateway that routes each prompt to a model tier with transparent rules and estimates its cost. A demo by Nityashree S.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f5f2; --surface:#ffffff; --ink:#0b0b0c; --ink-2:#4a4a48; --ink-3:#7a7a76;
+  --line:#e2e2dc; --line-2:#cfcfc8; --chip:#ecece7; --warn:#8a4b0f; --warn-bg:#f6ecdf;
+  --ok:#24563f; --ok-bg:#e3eee7;
+  --t-simple:#d9d9d2; --t-medium:#8d8d86; --t-complex:#0b0b0c;
+  --font:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b0b0c; --surface:#151516; --ink:#f5f5f2; --ink-2:#c3c3bd; --ink-3:#8b8b85;
+    --line:#26262a; --line-2:#36363b; --chip:#1e1e21; --warn:#f0b878; --warn-bg:#2a2117;
+    --ok:#9fd3b6; --ok-bg:#16241d;
+    --t-simple:#3a3a36; --t-medium:#8d8d86; --t-complex:#f5f5f2;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-underline-offset:3px}
+code{font-family:var(--mono);font-size:.9em}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px}
+.brand{font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+.brand span{color:var(--ink-3);font-weight:500}
+nav{display:flex;gap:18px;font-size:14px;color:var(--ink-2);white-space:nowrap}
+nav a{text-decoration:none}
+nav a:hover{color:var(--ink);text-decoration:underline}
+.hero{padding:44px 0 22px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+h1{font-size:clamp(28px,4.4vw,44px);line-height:1.08;letter-spacing:-.025em;font-weight:700;margin:10px 0 12px;max-width:780px}
+.lede{color:var(--ink-2);max-width:700px;font-size:16px}
+.mode{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 20px}
+.mode.demo{background:var(--warn-bg);color:var(--warn)}
+.mode.live{background:var(--ok-bg);color:var(--ok)}
+.mode b{white-space:nowrap}
+.grid{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:20px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+.card h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
+label{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin:14px 0 6px}
+textarea,select{width:100%;font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line-2);border-radius:9px;padding:10px 12px;outline:none}
+textarea{min-height:150px;resize:vertical;line-height:1.5}
+select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
+textarea:focus,select:focus{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 12%,transparent)}
+.count{font-size:12px;color:var(--ink-3);text-align:right;margin-top:4px;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font:inherit;font-size:12.5px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink-2);padding:6px 10px;border-radius:999px;cursor:pointer;text-align:left}
+.chips button:hover{border-color:var(--ink)}
+.btn{margin-top:18px;width:100%;font:inherit;font-weight:600;font-size:15px;background:var(--ink);color:var(--bg);border:0;border-radius:10px;padding:12px 14px;cursor:pointer}
+.btn:disabled{opacity:.55;cursor:wait}
+.empty{color:var(--ink-3);padding:48px 0;text-align:center}
+.tierline{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tier{font-size:clamp(30px,5vw,44px);font-weight:700;letter-spacing:-.03em;line-height:1}
+.model{font-family:var(--mono);font-size:13px;color:var(--ink-2);background:var(--chip);padding:3px 8px;border-radius:6px}
+.fb{font-size:12px;color:var(--warn);background:var(--warn-bg);padding:3px 8px;border-radius:6px}
+.meter{position:relative;height:10px;border-radius:5px;margin:22px 0 6px;display:grid;grid-template-columns:5fr 3fr 7fr;gap:3px}
+.meter span{border-radius:3px}
+.meter .needle{position:absolute;top:-6px;width:3px;height:22px;background:var(--ink);border-radius:2px;transition:left .35s ease;box-shadow:0 0 0 2px var(--surface)}
+.scale{display:grid;grid-template-columns:5fr 3fr 7fr;gap:3px;font-size:11px;color:var(--ink-3);white-space:nowrap}
+.signals{list-style:none;margin-top:18px;border-top:1px solid var(--line)}
+.signals li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.signals li small{display:block;color:var(--ink-3);font-size:12px}
+.signals li b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.signals li.total{border-bottom:0;font-weight:700}
+.answer{margin-top:18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14px;white-space:pre-wrap;color:var(--ink-2)}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:11.5px;color:var(--ink-3)}
+.kpi .v{font-weight:700;font-size:17px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.err{background:var(--warn-bg);color:var(--warn);border-radius:9px;padding:12px 14px;font-size:14px}
+.stats{margin-top:20px}
+.stats .bars{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--chip);margin:10px 0 8px}
+.stats .bars div{height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line-2)}
+.section{padding:44px 0 8px}
+.section h3{font-size:22px;letter-spacing:-.015em;margin-bottom:6px}
+.diagram{margin-top:18px;overflow-x:auto}
+.diagram svg{display:block;min-width:760px;width:100%;height:auto}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}
+.step{border-top:2px solid var(--ink);padding-top:10px;font-size:14px;color:var(--ink-2)}
+.step b{display:block;color:var(--ink);margin-bottom:2px}
+pre{position:relative;font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;margin-top:16px;color:var(--ink-2)}
+footer{border-top:1px solid var(--line);margin-top:48px;padding:24px 0 40px;color:var(--ink-3);font-size:13px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+@media (max-width:860px){
+  .grid{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr 1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+  nav .hide-sm,.brand span{display:none}
+  nav{gap:14px}
+  .wrap{padding:0 16px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap top">
+    <div class="brand">Smart Router <span>· demo</span></div>
+    <nav>
+      <a href="#how">How it works</a>
+      <a class="hide-sm" href="#api">API</a>
+      <a class="hide-sm" href="/dashboard">Dashboard</a>
+      <a href="https://github.com/Nityaa08/smart-router">GitHub</a>
+      <a class="hide-sm" href="https://nityashree.in">Portfolio</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="eyebrow">Python · FastAPI · OpenAI-compatible LLM gateway</div>
+    <h1>Send each prompt to the cheapest model tier that can handle it.</h1>
+    <p class="lede">Smart Router sits between an app and its LLMs. Hand-written rules score each prompt in under a millisecond, pick a simple, medium or complex tier, fall back to the next tier if a provider fails, and log what the request would have cost on GPT-4o.</p>
+  </section>
+
+  <div class="mode demo" id="mode" role="note">
+    <b>Demo mode.</b>
+    <span id="mode-text">Answers are simulated: no language model is called and no API key is used. The classification, routing, fallback, cost estimate and analytics are the project's real code.</span>
+  </div>
+
+  <div class="grid">
+    <form class="card" id="form">
+      <h2>Prompt</h2>
+      <textarea id="prompt" maxlength="2000" aria-label="Prompt">What is the capital of France?</textarea>
+      <div class="count" id="count"></div>
+      <label>Try an example</label>
+      <div class="chips" id="examples"></div>
+      <label for="force">Tier</label>
+      <select id="force">
+        <option value="">Automatic (let the classifier decide)</option>
+        <option value="simple">Force simple</option>
+        <option value="medium">Force medium</option>
+        <option value="complex">Force complex</option>
+      </select>
+      <button class="btn" id="go" type="submit">Route this prompt</button>
+    </form>
+
+    <section class="card" id="result" aria-live="polite">
+      <h2>Routing decision</h2>
+      <div class="empty">Send a prompt to see how it is scored and routed.</div>
+    </section>
+  </div>
+
+  <section class="card stats" id="stats">
+    <h2>This instance so far</h2>
+    <div id="stats-body" class="empty" style="padding:8px 0;text-align:left">No requests yet.</div>
+  </section>
+
+  <section class="section" id="how">
+    <h3>How it works</h3>
+    <p class="lede">The gateway speaks the OpenAI chat format, so an app only changes its base URL. No LLM is used to classify: the score comes from length, keywords, code, multi-step and math patterns.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 980 245" role="img" aria-labelledby="dg-t">
+        <title id="dg-t">App sends a chat request; cache check; rule-based classifier picks a tier; the tier's provider answers, falling back to the next tier on failure; cost is logged.</title>
+        <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/></marker></defs>
+        <g fill="none" stroke="var(--ink-3)" stroke-width="1.4">
+          <path d="M112 95 H138" marker-end="url(#a)"/>
+          <path d="M262 95 H288" marker-end="url(#a)"/>
+          <path d="M432 95 H470 V40 H498" marker-end="url(#a)"/>
+          <path d="M470 95 H498" marker-end="url(#a)"/>
+          <path d="M470 95 V150 H498" marker-end="url(#a)"/>
+          <path d="M562 62 V76" marker-end="url(#a)" stroke-dasharray="3 3"/>
+          <path d="M562 117 V131" marker-end="url(#a)" stroke-dasharray="3 3"/>
+          <path d="M628 95 H658" marker-end="url(#a)"/>
+          <path d="M800 95 H818" marker-end="url(#a)"/>
+          <path d="M200 120 V215 H895 V122" stroke-dasharray="3 3" marker-end="url(#a)"/>
+        </g>
+        <g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="13" text-anchor="middle">
+          <text x="548" y="236" fill="var(--ink-3)" font-size="11">cache hit (Redis, SHA-256 of messages): answered with no provider call</text>
+          <rect x="4" y="70" width="108" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="58" y="92" fill="var(--ink)" font-weight="600">Your app</text>
+          <text x="58" y="109" fill="var(--ink-3)" font-size="11">OpenAI SDK</text>
+
+          <rect x="140" y="70" width="122" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="201" y="92" fill="var(--ink)" font-weight="600">Gateway</text>
+          <text x="201" y="109" fill="var(--ink-3)" font-size="11">auth · limits · cache</text>
+
+          <rect x="290" y="70" width="142" height="50" rx="9" fill="var(--ink)"/>
+          <text x="361" y="92" fill="var(--bg)" font-weight="600">Rule classifier</text>
+          <text x="361" y="109" fill="var(--bg)" font-size="11" opacity=".75">score 0-14, &lt; 1 ms</text>
+
+          <rect x="500" y="20" width="128" height="42" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="564" y="46" fill="var(--ink)" font-weight="600">simple · ≤ 4</text>
+          <rect x="500" y="76" width="128" height="42" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="564" y="102" fill="var(--ink)" font-weight="600">medium · 5-7</text>
+          <rect x="500" y="132" width="128" height="42" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="564" y="158" fill="var(--ink)" font-weight="600">complex · ≥ 8</text>
+          <text x="564" y="194" fill="var(--ink-3)" font-size="11">provider down: try the next tier up</text>
+
+          <rect x="660" y="70" width="140" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="730" y="92" fill="var(--ink)" font-weight="600">Provider</text>
+          <text x="730" y="109" fill="var(--ink-3)" font-size="11">Groq · OpenRouter · …</text>
+
+          <rect x="820" y="70" width="150" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
+          <text x="895" y="92" fill="var(--ink)" font-weight="600">Cost log</text>
+          <text x="895" y="109" fill="var(--ink-3)" font-size="11">tokens · cost vs GPT-4o</text>
+        </g>
+      </svg>
+    </div>
+    <div class="steps">
+      <div class="step"><b>Drop-in API</b><code>POST /v1/chat/completions</code>, plus <code>X-Router-Tier</code> and <code>X-Router-Model</code> headers.</div>
+      <div class="step"><b>Explainable</b>Every decision can be traced to the rules above; <code>/v1/route/explain</code> returns them.</div>
+      <div class="step"><b>Resilient</b>A failing provider escalates to the next tier, for normal and streamed requests.</div>
+      <div class="step"><b>Tested</b>Unit tests with fake providers cover routing, fallback, streaming, cache, auth and limits.</div>
+    </div>
+  </section>
+
+  <section class="section" id="api">
+    <h3>Call it like OpenAI</h3>
+    <p class="lede">Point any OpenAI client at the gateway. On this public demo the answers are simulated and requests are rate limited.</p>
+    <pre id="snippet"></pre>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Built by <a href="https://nityashree.in">Nityashree S</a> · <a href="https://github.com/Nityaa08/smart-router">Source on GitHub</a></span>
+    <span><a href="/health">/health</a> · <a href="/analytics">/analytics</a> · <a href="/docs">API docs</a></span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const EXAMPLES = [
+    ["Simple", "What is the capital of France?"],
+    ["Medium", "Explain the difference between a process and a thread, and compare how each shares memory."],
+    ["Complex", "Implement an LRU cache in Python with O(1) get and put. First design the data structures, then write the class, then analyze the time complexity.\n\n```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        ...\n```"],
+    ["Many simple questions", "What is DNS? What is TCP? What is HTTP? Define latency. Who is Alan Turing?"],
+  ];
+  const TIER_COLOR = { simple: "var(--t-simple)", medium: "var(--t-medium)", complex: "var(--t-complex)" };
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const usd = (x) => x === 0 ? "$0" : x < 0.01 ? "$" + x.toPrecision(2) : "$" + x.toFixed(4);
+
+  const box = $("examples");
+  for (const [label, text] of EXAMPLES) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label;
+    b.onclick = () => { $("prompt").value = text; count(); send(); };
+    box.appendChild(b);
+  }
+  const count = () => { $("count").textContent = $("prompt").value.length + " / 2000 characters"; };
+  $("prompt").addEventListener("input", count); count();
+
+  $("snippet").textContent =
+`from openai import OpenAI
+
+client = OpenAI(base_url="${location.origin}/v1", api_key="not-needed-for-the-demo")
+r = client.chat.completions.with_raw_response.create(
+    model="auto",  # the router picks the model
+    messages=[{"role": "user", "content": "What is 2+2?"}],
+)
+print(r.headers["x-router-tier"], r.headers["x-router-model"])
+
+# or: curl -s ${location.origin}/v1/route/explain -H 'Content-Type: application/json' \\
+#   -d '{"messages":[{"role":"user","content":"What is 2+2?"}]}'`;
+
+  fetch("/health").then(r => r.json()).then(h => {
+    if (h.provider_name && h.provider_name !== "demo") {
+      $("mode").className = "mode live";
+      $("mode").querySelector("b").textContent = "Live.";
+      $("mode-text").textContent = "Answers come from real models through " + h.provider_name + ". Requests are rate limited and answers are kept short.";
+    }
+  }).catch(() => {});
+
+  async function post(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    let data = null; try { data = await r.json(); } catch (e) {}
+    return { ok: r.ok, status: r.status, data, headers: r.headers };
+  }
+
+  function errorBox(status, data) {
+    const msg = (data && (data.error && (data.error.message || data.error) || data.detail)) || "Request failed";
+    const hint = status === 429 ? " The public demo allows a few requests a minute; wait a moment and try again." : "";
+    return `<div class="err"><b>HTTP ${status}</b>: ${esc(typeof msg === "string" ? msg : JSON.stringify(msg))}${hint}</div>`;
+  }
+
+  async function send(e) {
+    if (e) e.preventDefault();
+    const content = $("prompt").value.trim();
+    if (!content) return;
+    const btn = $("go"); btn.disabled = true; btn.textContent = "Routing…";
+    const messages = [{ role: "user", content }];
+    const force = $("force").value || null;
+    try {
+      const [ex, chat] = await Promise.all([
+        post("/v1/route/explain", { messages }),
+        post("/v1/chat/completions", { messages, force_tier: force }),
+      ]);
+      if (!ex.ok) { $("result").innerHTML = "<h2>Routing decision</h2>" + errorBox(ex.status, ex.data); return; }
+      render(ex.data, chat, force);
+      loadStats();
+    } catch (err) {
+      $("result").innerHTML = "<h2>Routing decision</h2>" + errorBox(0, { error: "Network error" });
+    } finally {
+      btn.disabled = false; btn.textContent = "Route this prompt";
+    }
+  }
+
+  function render(x, chat, force) {
+    const pos = Math.min(x.score, 14) / 14 * 100;
+    const r = chat.ok ? chat.data.router : null;
+    const used = r ? r.tier : (force || x.tier);
+    let html = `<h2>Routing decision</h2>
+      <div class="tierline"><div class="tier">${esc(used)}</div>
+      <span class="model">${esc(r ? r.model : "")}</span>
+      ${force ? `<span class="fb">forced by you (classifier said ${esc(x.tier)})</span>` : ""}
+      ${chat.ok && chat.headers.get("x-router-fallback") === "true" ? `<span class="fb">fell back</span>` : ""}</div>
+      <div class="meter" aria-hidden="true"><span style="background:var(--t-simple)"></span><span style="background:var(--t-medium)"></span><span style="background:var(--t-complex)"></span><div class="needle" style="left:calc(${pos}% - 1px)"></div></div>
+      <div class="scale"><span>simple 0-4</span><span>medium 5-7</span><span>complex 8-14</span></div>
+      <ul class="signals">`;
+    if (!x.signals.length) html += `<li><span>No rule fired<small>score 0</small></span><b>0</b></li>`;
+    for (const s of x.signals) html += `<li><span>${esc(s.name)}<small>${esc(s.detail)}</small></span><b>+${s.points}</b></li>`;
+    html += `<li class="total"><span>Score</span><b>${x.score}</b></li></ul>`;
+    if (chat.ok) {
+      const saved = r.cost_saved_usd, cost = r.actual_cost_usd, base = cost + saved;
+      html += `<div class="kpis">
+        <div class="kpi"><div class="k">Est. cost, this tier</div><div class="v">${usd(cost)}</div></div>
+        <div class="kpi"><div class="k">Same tokens on GPT-4o</div><div class="v">${usd(base)}</div></div>
+        <div class="kpi"><div class="k">Latency${r.from_cache ? " (cache)" : ""}</div><div class="v">${r.latency_ms} ms</div></div>
+      </div>
+      <div class="answer">${esc(chat.data.choices[0].message.content)}</div>`;
+    } else {
+      html += `<div style="margin-top:16px">${errorBox(chat.status, chat.data)}</div>`;
+    }
+    $("result").innerHTML = html;
+  }
+
+  async function loadStats() {
+    try {
+      const a = await fetch("/analytics").then(r => r.json());
+      if (!a.total_requests) return;
+      const tiers = ["simple", "medium", "complex"];
+      const n = a.total_requests;
+      $("stats-body").className = "";
+      $("stats-body").innerHTML = `
+        <div class="kpis" style="margin-top:0">
+          <div class="kpi"><div class="k">Requests</div><div class="v">${n}</div></div>
+          <div class="kpi"><div class="k">Est. cost</div><div class="v">${usd(a.actual_cost_usd)}</div></div>
+          <div class="kpi"><div class="k">Est. on GPT-4o</div><div class="v">${usd(a.baseline_cost_usd)}</div></div>
+        </div>
+        <div class="bars">${tiers.map(t => a.by_tier[t] ? `<div style="width:${a.by_tier[t].count / n * 100}%;background:${TIER_COLOR[t]}" title="${t}"></div>` : "").join("")}</div>
+        <div class="legend">${tiers.map(t => `<span><i style="background:${TIER_COLOR[t]}"></i>${t}: ${a.by_tier[t] ? a.by_tier[t].count : 0}</span>`).join("")}</div>
+        <p style="font-size:12.5px;color:var(--ink-3);margin-top:10px">Counts are kept in this serverless instance's memory and reset when it restarts. Costs use list prices and, in demo mode, estimated token counts; they show the pricing logic, not measured savings.</p>`;
+    } catch (e) {}
+  }
+
+  $("form").addEventListener("submit", send);
+  loadStats();
+})();
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from ..schemas.request import ChatRequest
 from ..router.engine import route, route_stream
 from ..security import limiter, rate_limit, require_api_key
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_api_key)])
@@ -19,10 +20,22 @@ def _err(status: int, detail: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"message": detail, "type": "router_error"}})
 
 
+def prompt_too_long(messages: list[dict]) -> JSONResponse | None:
+    """MAX_PROMPT_CHARS guard for public deployments (0 = no limit)."""
+    limit = get_settings().max_prompt_chars
+    if limit > 0:
+        size = sum(len(str(m.get("content", ""))) for m in messages)
+        if size > limit:
+            return _err(413, f"Prompt is {size} characters; this deployment accepts at most {limit}.")
+    return None
+
+
 @router.post("/v1/chat/completions")
 @limiter.limit(rate_limit)
 async def chat_completions(body: ChatRequest, request: Request):
     messages = [m.model_dump() for m in body.messages]
+    if (too_long := prompt_too_long(messages)) is not None:
+        return too_long
     redis = _get_redis(request)
 
     # ── Streaming ─────────────────────────────────────────────────────────────

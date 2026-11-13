@@ -9,6 +9,8 @@ class Base(DeclarativeBase):
 
 def get_engine():
     settings = get_settings()
+    if not settings.database_enabled:
+        return None  # request log kept in memory (see router/memlog.py)
     return create_async_engine(
         settings.database_url,
         pool_pre_ping=True,
@@ -18,9 +20,12 @@ def get_engine():
 
 
 engine = get_engine()
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False) if engine is not None else None
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncSession | None:
+    if AsyncSessionLocal is None:
+        yield None
+        return
     async with AsyncSessionLocal() as session:
         yield session

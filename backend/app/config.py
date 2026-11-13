@@ -5,8 +5,15 @@ from typing import Literal
 
 
 class Settings(BaseSettings):
-    # Provider: "ollama" | "groq" | "openrouter" | "openai_compat"
+    # Provider: "ollama" | "groq" | "openrouter" | "openai_compat" | "demo"
+    # "demo" calls no model: answers are labelled simulations (public demo, no key).
     provider: str = "ollama"
+
+    # Demo (PROVIDER=demo): the model names shown per tier. Priced from
+    # MODEL_PRICING like a real run, so the cost estimate logic is visible.
+    demo_simple_model: str = "openai/gpt-oss-20b"
+    demo_medium_model: str = "openai/gpt-oss-120b"
+    demo_complex_model: str = "openai/gpt-oss-120b"
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
@@ -38,7 +45,8 @@ class Settings(BaseSettings):
     openai_compat_medium_model: str = ""
     openai_compat_complex_model: str = ""
 
-    # Database & Cache
+    # Database & Cache. DATABASE_URL="memory" (or empty) keeps the request log in
+    # process memory instead of Postgres; REDIS_URL="none" (or empty) turns the cache off.
     database_url: str = "postgresql+asyncpg://smartrouter:smartrouter@localhost:5432/smartrouter"
     redis_url: str = "redis://localhost:6379"
 
@@ -50,6 +58,20 @@ class Settings(BaseSettings):
     # Optional shared secret. When set, /v1/* and /analytics require
     # "Authorization: Bearer <key>" (or "X-API-Key: <key>").
     router_api_key: str = ""
+    # Public-demo guards. 0 = no limit.
+    max_prompt_chars: int = 0          # reject longer prompts with HTTP 413
+    max_completion_tokens: int = 0     # cap max_tokens sent to the provider
+    # Behind a proxy that sets X-Real-IP / X-Forwarded-For itself (e.g. Vercel),
+    # rate-limit by that address instead of the proxy's.
+    trust_proxy_headers: bool = False
+
+    @property
+    def database_enabled(self) -> bool:
+        return bool(self.database_url) and self.database_url.lower() not in ("memory", "none")
+
+    @property
+    def redis_enabled(self) -> bool:
+        return bool(self.redis_url) and self.redis_url.lower() not in ("none", "off")
 
     class Config:
         env_file = ".env"

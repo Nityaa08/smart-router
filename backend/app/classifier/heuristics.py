@@ -3,7 +3,7 @@ Zero-cost heuristic classifier.
 No LLM calls — pure rule-based scoring.
 """
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 Tier = Literal["simple", "medium", "complex"]
@@ -35,10 +35,20 @@ MATH_LOGIC_PATTERNS = [
 
 
 @dataclass
+class Signal:
+    """One scoring rule that fired, for explaining a routing decision."""
+    name: str
+    points: int
+    detail: str
+
+
+@dataclass
 class ClassifierResult:
     tier: Tier
     score: int
     confidence: float  # 0.0–1.0
+    token_estimate: int = 0
+    signals: list[Signal] = field(default_factory=list)
 
 
 def _count_tokens(text: str) -> int:
@@ -71,37 +81,41 @@ def classify(messages: list[dict]) -> ClassifierResult:
     )
 
     token_count = _count_tokens(full_text)
-    score = 0
+    signals: list[Signal] = []
+
+    def add(name: str, points: int, detail: str) -> None:
+        if points:
+            signals.append(Signal(name, points, detail))
 
     # Token-length signals
     if token_count < 100:
-        score += 2
+        add("short prompt", 2, f"about {token_count} tokens (< 100)")
     if token_count > 500:
-        score += 2
+        add("long prompt", 2, f"about {token_count} tokens (> 500)")
 
     # Keyword signals
     simple_hits = _matches_any(full_text, SIMPLE_KEYWORDS)
     medium_hits = _matches_any(full_text, MEDIUM_KEYWORDS)
     complex_keyword_hits = _matches_any(full_text, COMPLEX_KEYWORDS)
 
-    score += min(simple_hits * 2, 4)   # cap at +4
-    score += min(medium_hits * 1, 3)   # cap at +3
-    score += min(complex_keyword_hits * 2, 4)
+    add("simple keywords", min(simple_hits * 2, 4), f"{simple_hits} matched, e.g. 'what is', 'define' (+2 each, max 4)")
+    add("medium keywords", min(medium_hits * 1, 3), f"{medium_hits} matched, e.g. 'explain', 'compare' (+1 each, max 3)")
+    add("complex keywords", min(complex_keyword_hits * 2, 4),
+        f"{complex_keyword_hits} matched, e.g. 'implement', 'debug' (+2 each, max 4)")
 
     # Code patterns
-    code_hits = _matches_any(full_text, CODE_PATTERNS)
-    if code_hits:
-        score += 2
+    if _matches_any(full_text, CODE_PATTERNS):
+        add("code", 2, "code fences or code keywords")
 
     # Multi-step
-    multi_hits = _matches_any(full_text, MULTI_STEP_PATTERNS)
-    if multi_hits:
-        score += 2
+    if _matches_any(full_text, MULTI_STEP_PATTERNS):
+        add("multi-step", 2, "'first ... then', 'step 1' or a numbered list")
 
     # Math/logic
-    math_hits = _matches_any(full_text, MATH_LOGIC_PATTERNS)
-    if math_hits:
-        score += 2
+    if _matches_any(full_text, MATH_LOGIC_PATTERNS):
+        add("math / logic", 2, "'prove', 'complexity', 'Big-O', 'recursion' ...")
+
+    score = sum(s.points for s in signals)
 
     # Determine tier
     # simple: score <= 4, medium: 5–7, complex: >= 8
@@ -117,4 +131,10 @@ def classify(messages: list[dict]) -> ClassifierResult:
 
     confidence = min(1.0, score / max(max_score, 1))
 
-    return ClassifierResult(tier=tier, score=score, confidence=round(confidence, 2))
+    return ClassifierResult(
+        tier=tier,
+        score=score,
+        confidence=round(confidence, 2),
+        token_estimate=token_count,
+        signals=signals,
+    )

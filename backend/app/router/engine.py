@@ -15,9 +15,11 @@ from ..providers.base import LLMProvider, LLMResponse
 from ..providers.ollama import OllamaProvider
 from ..providers.groq import GroqProvider
 from ..providers.openai_compat import OpenAICompatProvider
+from ..providers.demo import DemoProvider
 from ..config import get_settings, calculate_cost, BASELINE_MODEL
 from ..models.request_log import RequestLog
-from ..database import AsyncSessionLocal
+from .. import database
+from . import memlog
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,13 @@ class RouterResult:
 def _make_providers() -> dict[Tier, LLMProvider]:
     """Build provider map based on config."""
     cfg = get_settings()
+
+    if cfg.provider == "demo":
+        return {
+            "simple":  DemoProvider(cfg.demo_simple_model, "simple"),
+            "medium":  DemoProvider(cfg.demo_medium_model, "medium"),
+            "complex": DemoProvider(cfg.demo_complex_model, "complex"),
+        }
 
     if cfg.provider == "groq":
         if not cfg.groq_api_key:
@@ -110,7 +119,16 @@ async def _log_request(
     status: str,
     phash: str,
 ) -> None:
-    async with AsyncSessionLocal() as session:
+    if database.AsyncSessionLocal is None:
+        # No database configured (e.g. the serverless demo): keep the row in memory.
+        memlog.append({
+            "tier": tier, "model": model, "provider": provider,
+            "input_tokens": input_tokens, "output_tokens": output_tokens,
+            "actual_cost": actual_cost, "baseline_cost": baseline_cost, "cost_saved": cost_saved,
+            "latency_ms": latency_ms, "status": status, "prompt_hash": phash,
+        })
+        return
+    async with database.AsyncSessionLocal() as session:
         log = RequestLog(
             id=uuid.uuid4(),
             difficulty=tier,
@@ -130,6 +148,14 @@ async def _log_request(
 
 
 CACHE_HIT_STATUS = "cache_hit"
+
+
+def cap_max_tokens(max_tokens: int | None) -> int | None:
+    """Apply MAX_COMPLETION_TOKENS (if set) so a public deployment can't ask for huge answers."""
+    cap = get_settings().max_completion_tokens
+    if cap <= 0:
+        return max_tokens
+    return min(max_tokens, cap) if max_tokens else cap
 
 # Keep references so fire-and-forget log tasks are not garbage-collected.
 _log_tasks: set[asyncio.Task] = set()
@@ -163,6 +189,7 @@ async def route(
     4. Calculate costs and log to DB.
     """
     providers = get_providers()
+    max_tokens = cap_max_tokens(max_tokens)
     phash = prompt_hash(messages)
     cache_key = f"sr:resp:{phash}"
 
@@ -316,6 +343,7 @@ async def route_stream(
     Raises RuntimeError if every tier fails.
     """
     providers = get_providers()
+    max_tokens = cap_max_tokens(max_tokens)
     classification = classify(messages)
     tier: Tier = force_tier or classification.tier
 

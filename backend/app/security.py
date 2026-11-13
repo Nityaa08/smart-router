@@ -20,6 +20,21 @@ def _supplied_key(request: Request) -> str:
     return supplied
 
 
+def client_ip(request: Request) -> str:
+    """
+    The caller's IP. With TRUST_PROXY_HEADERS=true (only behind a proxy that sets these
+    headers itself, such as Vercel), use X-Real-IP / X-Forwarded-For; otherwise the socket.
+    """
+    if get_settings().trust_proxy_headers:
+        real = request.headers.get("x-real-ip")
+        if real:
+            return real.strip()
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    return get_remote_address(request)
+
+
 def rate_limit_key(request: Request) -> str:
     """
     Who a request counts against: the caller's API key if they sent one, otherwise their IP.
@@ -29,7 +44,7 @@ def rate_limit_key(request: Request) -> str:
     supplied = _supplied_key(request)
     if supplied:
         return "key:" + hashlib.sha256(supplied.encode()).hexdigest()[:16]
-    return "ip:" + get_remote_address(request)
+    return "ip:" + client_ip(request)
 
 
 # Applied with @limiter.limit(...) on the chat endpoint (see api/chat.py).

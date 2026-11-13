@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..router.engine import get_providers
-from ..database import engine
+from .. import database
 from ..config import get_settings
 
 router = APIRouter()
@@ -13,13 +13,16 @@ async def health():
     results = {"status": "ok", "db": "unknown", "provider": "unknown", "provider_name": cfg.provider}
 
     # Check DB
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
-        results["db"] = "up"
-    except Exception as e:
-        results["db"] = f"down: {e}"
-        results["status"] = "degraded"
+    if database.engine is None:
+        results["db"] = "not configured (request log kept in memory)"
+    else:
+        try:
+            async with database.engine.connect() as conn:
+                await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+            results["db"] = "up"
+        except Exception as e:
+            results["db"] = f"down: {e}"
+            results["status"] = "degraded"
 
     # Check provider (also verifies models are pulled)
     try:
