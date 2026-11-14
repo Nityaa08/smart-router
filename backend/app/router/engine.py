@@ -191,7 +191,8 @@ async def route(
     providers = get_providers()
     max_tokens = cap_max_tokens(max_tokens)
     phash = prompt_hash(messages)
-    cache_key = f"sr:resp:{phash}"
+    # A forced tier gets its own cache entry, so it is never answered by another tier's cached reply.
+    cache_key = f"sr:resp:{phash}" + (f":{force_tier}" if force_tier else "")
 
     # ── Cache check ──────────────────────────────────────────────────────────
     if redis_client:
@@ -274,8 +275,10 @@ async def route(
     cost_saved = max(0.0, baseline_cost - actual_cost)
 
     # ── Async DB log (don't block response) ─────────────────────────────────
+    # Log the tier whose model answered (as cache hits do), so /analytics puts
+    # each request's cost under the tier that actually ran it.
     _schedule_log(
-        tier=classification.tier,
+        tier=used_tier,
         model=provider_obj.model_name,
         provider=provider_obj.provider_name,
         input_tokens=response.usage.input_tokens,

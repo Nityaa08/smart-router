@@ -96,7 +96,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **124 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **127 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -215,7 +215,7 @@ Response includes a `router` field:
 ```
 
 ### `GET /analytics`
-`cache_hits` counts requests answered from Redis. A cache hit is logged with zero cost, and the GPT-4o price of its tokens counts as saved; `avg_latency_ms` covers provider calls only. Requires the API key if `ROUTER_API_KEY` is set.
+`by_tier` groups requests by the tier whose model answered: a forced tier counts under that tier, and a fallback under the tier it fell back to. `cache_hits` counts requests answered from Redis. A cache hit is logged with zero cost, and the GPT-4o price of its tokens counts as saved; `avg_latency_ms` covers provider calls only. Requires the API key if `ROUTER_API_KEY` is set.
 
 Example shape (illustrative values):
 ```json
@@ -248,7 +248,7 @@ make unit-test
 make test
 ```
 
-The unit test suite has 124 tests (64 classifier, 22 config/cost/default-model, 24 API, 14 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 127 tests (64 classifier, 22 config/cost/default-model, 27 API, 14 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make test` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make test ROUTER_API_KEY=your-key`.
 
@@ -378,7 +378,7 @@ smart-router/
     ├── tests/
     │   ├── test_classifier.py  # 64 classifier tests, incl. 24 hand-labelled prompts
     │   ├── test_config.py      # 22 config/cost/default-model tests
-    │   ├── test_api.py         # 24 chat-endpoint tests with fake providers
+    │   ├── test_api.py         # 27 chat-endpoint tests with fake providers
     │   └── test_demo.py        # 14 demo-mode tests
     └── app/
         ├── main.py           # FastAPI app (CORS, rate-limit handler, static files)

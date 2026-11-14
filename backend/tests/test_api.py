@@ -131,6 +131,20 @@ class TestChat:
         assert r.status_code == 503
 
 
+class TestLoggedTier:
+    """/analytics groups cost by the logged tier, so it must be the tier whose model answered."""
+
+    def test_forced_tier_is_logged(self, client, logged):
+        r = chat(client, force_tier="complex")
+        assert r.headers["x-router-tier"] == "complex"
+        assert [(row["tier"], row["model"]) for row in logged] == [("complex", "big-model")]
+
+    def test_fallback_is_logged_under_the_tier_that_answered(self, client, providers, logged):
+        providers["simple"].fail = True
+        chat(client)
+        assert [(row["tier"], row["model"], row["status"]) for row in logged] == [("medium", "mid-model", "fallback")]
+
+
 # ─── Streaming ────────────────────────────────────────────────────────────────
 
 def _sse_events(text: str) -> list:
@@ -199,6 +213,18 @@ class TestCache:
         hit = logged[1]
         assert hit["actual_cost"] == 0.0
         assert hit["cost_saved"] == hit["baseline_cost"] > 0
+
+    def test_cached_answer_is_not_served_for_a_different_forced_tier(self, client, providers):
+        app.state.redis = FakeRedis()
+        chat(client)
+        forced = chat(client, force_tier="complex")
+        assert forced.headers["x-from-cache"] == "false"
+        assert forced.headers["x-router-tier"] == "complex"
+        assert providers["complex"].calls == 1
+        # The same forced request again is a cache hit for that tier.
+        again = chat(client, force_tier="complex")
+        assert again.headers["x-from-cache"] == "true"
+        assert again.headers["x-router-tier"] == "complex"
 
 
 # ─── Rate limit ───────────────────────────────────────────────────────────────
