@@ -1,4 +1,4 @@
-.PHONY: install demo test unit-test dev stop migrate migrate-new smoke logs clean
+.PHONY: install demo test eval unit-test dev stop migrate migrate-new smoke logs clean
 
 # ── Local, no Docker ─────────────────────────────────────────────────────────
 # Python 3.12 is preferred: the pinned asyncpg 0.29 does not build on 3.13.
@@ -25,6 +25,10 @@ test: install
 	cd backend && $(BIN)/python -m pytest tests/ -q
 
 unit-test: test
+
+# Routing eval: the classifier over the hand-labelled prompts (also GET /v1/route/eval).
+eval: install
+	cd backend && $(BIN)/python -m app.evals.routing
 
 # ── Docker Compose (Postgres + Redis + API) ──────────────────────────────────
 
