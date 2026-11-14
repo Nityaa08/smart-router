@@ -148,6 +148,8 @@ async def _log_request(
 
 
 CACHE_HIT_STATUS = "cache_hit"
+# A stream that stopped before the provider finished (provider error or client disconnect).
+STREAM_INCOMPLETE_STATUS = "stream_incomplete"
 
 
 def cap_max_tokens(max_tokens: int | None) -> int | None:
@@ -327,6 +329,7 @@ class OpenStream:
     tier: Tier            # the tier that is actually answering
     requested_tier: Tier  # the tier the classifier (or force_tier) picked
     model: str
+    provider_name: str
 
     @property
     def fell_back(self) -> bool:
@@ -362,6 +365,46 @@ async def route_stream(
             continue
         if attempt_tier != tier:
             logger.warning("Stream fell back from %s to %s", tier, attempt_tier)
-        return OpenStream(first, it, attempt_tier, tier, provider.model_name)
+        return OpenStream(first, it, attempt_tier, tier, provider.model_name, provider.provider_name)
 
     raise RuntimeError("All providers failed for the stream (" + "; ".join(errors) + ")")
+
+
+def _estimate_tokens(text: str) -> int:
+    """About 4 characters per token, the same rough rule the classifier uses."""
+    return max(1, len(text) // 4) if text else 0
+
+
+def log_stream(
+    opened: OpenStream,
+    messages: list[dict],
+    output_text: str,
+    latency_ms: int,
+    completed: bool,
+) -> None:
+    """
+    Log a streamed request like route() logs a normal one, so it appears in /analytics.
+    The providers' streams carry text only, no usage, so token counts (and therefore
+    costs) are estimated from the prompt and the text that was streamed.
+    """
+    input_tokens = _estimate_tokens(" ".join(str(m.get("content", "")) for m in messages))
+    output_tokens = _estimate_tokens(output_text)
+    actual_cost = calculate_cost(opened.model, input_tokens, output_tokens)
+    baseline_cost = calculate_cost(BASELINE_MODEL, input_tokens, output_tokens)
+    if not completed:
+        status = STREAM_INCOMPLETE_STATUS
+    else:
+        status = "fallback" if opened.fell_back else "success"
+    _schedule_log(
+        tier=opened.tier,
+        model=opened.model,
+        provider=opened.provider_name,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        actual_cost=actual_cost,
+        baseline_cost=baseline_cost,
+        cost_saved=max(0.0, baseline_cost - actual_cost),
+        latency_ms=latency_ms,
+        status=status,
+        phash=prompt_hash(messages),
+    )

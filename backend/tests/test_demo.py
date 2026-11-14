@@ -100,6 +100,15 @@ class TestDemoEndToEnd:
         assert a["baseline_cost_usd"] > a["actual_cost_usd"] > 0
         assert a["cache_hits"] == 0
 
+    def test_streamed_requests_appear_in_analytics(self, client):
+        r = client.post("/v1/chat/completions", json={**_body("What is 2+2?"), "stream": True})
+        assert r.status_code == 200 and r.text.rstrip().endswith("data: [DONE]")
+        _drain_logs()
+        a = client.get("/analytics").json()
+        assert a["total_requests"] == 1
+        assert a["by_tier"]["simple"]["count"] == 1
+        assert a["baseline_cost_usd"] > a["actual_cost_usd"] > 0
+
     def test_health_reports_memory_log(self, client):
         h = client.get("/health").json()
         assert h["status"] == "ok"

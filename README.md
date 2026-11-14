@@ -96,7 +96,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **127 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **132 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -195,7 +195,7 @@ OpenAI-compatible chat endpoint.
 }
 ```
 
-`"stream": true` returns OpenAI-style `chat.completion.chunk` Server-Sent Events ending in `data: [DONE]`, with the `X-Router-Tier` and `X-Router-Model` headers. If a provider fails before its first chunk, the stream falls back to the next tier up, like non-streamed requests, and `X-Router-Fallback: true` says so. Only if every tier fails is the response HTTP 503. Streamed requests are not cached or logged (see Known Limitations).
+`"stream": true` returns OpenAI-style `chat.completion.chunk` Server-Sent Events ending in `data: [DONE]`, with the `X-Router-Tier` and `X-Router-Model` headers. If a provider fails before its first chunk, the stream falls back to the next tier up, like non-streamed requests, and `X-Router-Fallback: true` says so. Only if every tier fails is the response HTTP 503. Streamed requests are logged to `/analytics` when the stream ends, with estimated token counts, and are not cached (see Known Limitations).
 
 If `ROUTER_API_KEY` is set, send `Authorization: Bearer <key>` (or `X-API-Key: <key>`); otherwise the response is HTTP 401. Requests over `RATE_LIMIT` get HTTP 429. The limit counts per API key when one is sent (hashed, never stored raw), otherwise per client IP.
 
@@ -248,7 +248,7 @@ make unit-test
 make test
 ```
 
-The unit test suite has 127 tests (64 classifier, 22 config/cost/default-model, 27 API, 14 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 132 tests (64 classifier, 22 config/cost/default-model, 31 API, 15 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make test` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make test ROUTER_API_KEY=your-key`.
 
@@ -317,7 +317,7 @@ On 2026-11-02 streaming and the rate limit were checked against the same fake se
 
 - **Savings are an estimate, not a measurement.** `cost_saved` prices the tokens the chosen model used at GPT-4o list prices (from `config.py`) and subtracts the chosen model's price. Answer quality is not compared, and there is no evaluation set yet. The small-model prices for local Ollama models are assumptions.
 - **The classifier is unvalidated.** It uses hand-written keyword rules, checked only against 24 hand-labelled prompts (23 match), not a real evaluation set. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`, and a simple keyword cancels a harder one ("What is a closure? Implement one in JavaScript." stays `simple`). Keywords are matched anywhere in the text, with no sense of meaning.
-- **Streaming is simpler than the non-streaming path.** Streamed requests fall back to the next tier only before their first chunk (a provider that fails mid-stream reports the error in the stream). They are not cached and not logged, so they do not appear in `/analytics`.
+- **Streaming is simpler than the non-streaming path.** Streamed requests fall back to the next tier only before their first chunk (a provider that fails mid-stream reports the error in the stream). They are not cached. They are logged to `/analytics`, but the providers' streams carry no token usage, so their tokens and cost are estimated at about 4 characters per token from the prompt and the streamed text, and their latency is the time until the stream ended. A stream that stops early (provider error or client disconnect) is logged with status `stream_incomplete` and the text sent so far. In demo mode a streamed answer is therefore priced lower than the same answer non-streamed, which uses a typical answer length per tier.
 - **Authentication is one optional shared key.** With `ROUTER_API_KEY` unset (the default, for local dev) any client that can reach the server can send requests. There are no per-user keys or quotas. `/health` and the dashboard page stay public. CORS defaults to `*`.
 - **Rate-limit counts are only shared when Redis is used.** Limits are per API key (or per IP when no key is sent). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process.
 - **Default cloud model IDs will go out of date again.** The defaults were checked on 2026-11-02 against [Groq's model list](https://console.groq.com/docs/models) and [OpenRouter's free-model list](https://openrouter.ai/api/v1/models?max_price=0). Free OpenRouter models in particular are added and removed often. If you change models, add paid ones to `MODEL_PRICING`: unknown models are priced as GPT-4o (no saving shown); any `:free` model is priced at 0.
@@ -378,8 +378,8 @@ smart-router/
     ├── tests/
     │   ├── test_classifier.py  # 64 classifier tests, incl. 24 hand-labelled prompts
     │   ├── test_config.py      # 22 config/cost/default-model tests
-    │   ├── test_api.py         # 27 chat-endpoint tests with fake providers
-    │   └── test_demo.py        # 14 demo-mode tests
+    │   ├── test_api.py         # 31 chat-endpoint tests with fake providers
+    │   └── test_demo.py        # 15 demo-mode tests
     └── app/
         ├── main.py           # FastAPI app (CORS, rate-limit handler, static files)
         ├── security.py       # Rate limiter + optional API key check

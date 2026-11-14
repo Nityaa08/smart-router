@@ -1,10 +1,11 @@
+import time
 import uuid
 import json
 import logging
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from ..schemas.request import ChatRequest
-from ..router.engine import route, route_stream
+from ..router.engine import route, route_stream, log_stream
 from ..security import limiter, rate_limit, require_api_key
 from ..config import get_settings
 
@@ -40,6 +41,7 @@ async def chat_completions(body: ChatRequest, request: Request):
 
     # ── Streaming ─────────────────────────────────────────────────────────────
     if body.stream:
+        start = time.monotonic()
         try:
             # route_stream pulls the first chunk before any headers are sent, falling back
             # to the next tier if a provider is down; only if every tier fails is it a 503.
@@ -66,17 +68,27 @@ async def chat_completions(body: ChatRequest, request: Request):
             return f"data: {json.dumps(data)}\n\n"
 
         async def sse_generator():
+            parts: list[str] = []
+            completed = False
             try:
-                if first_chunk is not None:
-                    yield _chunk({"role": "assistant", "content": first_chunk})
-                async for chunk in stream_iter:
-                    yield _chunk({"content": chunk})
-                yield _chunk({}, finish_reason="stop")
-            except Exception as e:
-                # Headers are already sent; report the error in-band.
-                logger.warning("Stream interrupted: %s", e)
-                err = {"error": {"message": str(e) or e.__class__.__name__, "type": "router_error"}}
-                yield f"data: {json.dumps(err)}\n\n"
+                try:
+                    if first_chunk is not None:
+                        parts.append(first_chunk)
+                        yield _chunk({"role": "assistant", "content": first_chunk})
+                    async for chunk in stream_iter:
+                        parts.append(chunk)
+                        yield _chunk({"content": chunk})
+                    completed = True
+                    yield _chunk({}, finish_reason="stop")
+                except Exception as e:
+                    # Headers are already sent; report the error in-band.
+                    logger.warning("Stream interrupted: %s", e)
+                    err = {"error": {"message": str(e) or e.__class__.__name__, "type": "router_error"}}
+                    yield f"data: {json.dumps(err)}\n\n"
+            finally:
+                # Runs on success, provider error and client disconnect alike.
+                latency_ms = int((time.monotonic() - start) * 1000)
+                log_stream(opened, messages, "".join(parts), latency_ms, completed)
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(

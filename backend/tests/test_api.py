@@ -199,6 +199,48 @@ class TestStreaming:
         assert r.status_code == 503
 
 
+class BreaksMidStream(FakeProvider):
+    async def stream(self, messages, temperature=0.7, max_tokens=None):
+        yield "Partial answer"
+        raise ConnectionError("connection reset")
+
+
+class TestStreamLogging:
+    """Streamed requests are logged like other requests, so they show up in /analytics."""
+
+    def test_stream_is_logged_with_estimated_tokens(self, client, logged):
+        r = chat(client, content="What is 2+2?", stream=True)
+        assert r.status_code == 200
+        assert len(logged) == 1
+        row = logged[0]
+        assert (row["tier"], row["model"], row["provider"], row["status"]) == \
+            ("simple", "small-model", "fake", "success")
+        # Providers' streams carry no usage, so tokens are estimated at ~4 characters each.
+        assert row["input_tokens"] == len("What is 2+2?") // 4
+        assert row["output_tokens"] == len("Hello world") // 4
+        assert row["baseline_cost"] > 0
+        assert row["phash"] == engine.prompt_hash([{"role": "user", "content": "What is 2+2?"}])
+
+    def test_stream_fallback_is_logged_under_the_tier_that_answered(self, client, providers, logged):
+        providers["simple"].fail = True
+        chat(client, stream=True)
+        assert [(row["tier"], row["model"], row["status"]) for row in logged] == [("medium", "mid-model", "fallback")]
+
+    def test_stream_that_breaks_midway_is_logged_as_incomplete(self, client, providers, logged):
+        providers["simple"] = BreaksMidStream("small-model")
+        r = chat(client, stream=True)
+        assert "connection reset" in r.text
+        assert len(logged) == 1
+        assert logged[0]["status"] == engine.STREAM_INCOMPLETE_STATUS
+        assert logged[0]["output_tokens"] == len("Partial answer") // 4
+
+    def test_stream_where_every_tier_fails_is_not_logged(self, client, providers, logged):
+        for p in providers.values():
+            p.fail = True
+        assert chat(client, stream=True).status_code == 503
+        assert logged == []
+
+
 # ─── Cache ────────────────────────────────────────────────────────────────────
 
 class TestCache:
