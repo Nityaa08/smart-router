@@ -23,10 +23,10 @@ flowchart LR
     App[Your app<br/>OpenAI SDK] -->|POST /v1/chat/completions| GW[Gateway<br/>API key · rate limit]
     GW --> C{Redis cache<br/>SHA-256 of messages}
     C -->|hit| Resp[Response<br/>+ X-Router-* headers]
-    C -->|miss| CL[Rule classifier<br/>score 0-14, under 1 ms]
-    CL -->|score 0-4| S[simple tier]
-    CL -->|score 5-7| M[medium tier]
-    CL -->|score 8+| X[complex tier]
+    C -->|miss| CL[Rule classifier<br/>score 0-15, under 1 ms]
+    CL -->|score 0-1| S[simple tier]
+    CL -->|score 2-3| M[medium tier]
+    CL -->|score 4+| X[complex tier]
     S -. provider down .-> M
     M -. provider down .-> X
     S & M & X --> P[Provider<br/>Groq · OpenRouter · Ollama · OpenAI-compatible · demo]
@@ -35,7 +35,7 @@ flowchart LR
     L --> A[/analytics<br/>cost vs GPT-4o/]
 ```
 
-Each tier maps to a model you set in `.env`. **About the savings number:** it compares the price-table cost of the model used with GPT-4o list prices for the same token counts. It is not a measured saving — see [Known Limitations](#known-limitations-checked-2026-11-13).
+Each tier maps to a model you set in `.env`. **About the savings number:** it compares the price-table cost of the model used with GPT-4o list prices for the same token counts. It is not a measured saving — see [Known Limitations](#known-limitations-checked-2026-11-14).
 
 ---
 
@@ -96,7 +96,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **90 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **124 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -168,15 +168,17 @@ No LLM is called for classification. A scoring function evaluates signals in <1m
 
 | Signal | Points |
 |---|---|
-| Token count < 100 | +2 (simple signal) |
-| Keywords: "what is", "define", "translate", "summarize" | +2 |
-| Keywords: "explain", "compare", "analyze", "write a" | +1 |
-| Code patterns (` ``` `, `def`, `class`, `function`) | +2 |
+| Simple keywords: "what is", "define", "translate", "summarize", "who is" | −1 each, at most −2 |
+| Medium keywords: "explain", "compare", "analyze", "write a" | +1 each, at most +3 |
+| Complex keywords: "implement", "debug", "refactor", "prove", "algorithm" | +2 each, at most +4 |
+| Code patterns (` ``` `, `def`, `class`, `function f(`) | +2 |
 | Multi-step patterns ("first… then…", numbered steps) | +2 |
-| Math/logic ("prove", "derive", "algorithm", "complexity") | +2 |
-| Token count > 500 | +2 (complex signal) |
+| Math/logic ("prove", "derive", "complexity", "Big-O", `O(1)`, `O(n)`) | +2 |
+| Token count > 500 | +2 |
 
-**Score ≤ 4 → simple · Score 5–7 → medium · Score ≥ 8 → complex**
+**Score 0–1 → simple · Score 2–3 → medium · Score ≥ 4 → complex** (the score never goes below 0)
+
+The score measures complexity, so simple keywords take points away. Until 2026-11-14 they added points and every short prompt got +2, which sent prompts with two simple questions ("What is DNS? How many root servers are there?") to `medium` and two-keyword explanations ("Explain the difference between TCP and UDP") to `simple`. On a hand-labelled set of 24 prompts in `tests/test_classifier.py` (8 per tier) the old rules matched 10, the current rules match 23.
 
 ---
 
@@ -246,7 +248,7 @@ make unit-test
 make test
 ```
 
-The unit test suite has 90 tests (30 classifier, 22 config/cost/default-model, 24 API, 14 demo mode) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 124 tests (64 classifier, 22 config/cost/default-model, 24 API, 14 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make test` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make test ROUTER_API_KEY=your-key`.
 
@@ -311,10 +313,10 @@ On 2026-11-02 streaming and the rate limit were checked against the same fake se
 
 ---
 
-## Known Limitations (checked 2026-11-13)
+## Known Limitations (checked 2026-11-14)
 
 - **Savings are an estimate, not a measurement.** `cost_saved` prices the tokens the chosen model used at GPT-4o list prices (from `config.py`) and subtracts the chosen model's price. Answer quality is not compared, and there is no evaluation set yet. The small-model prices for local Ollama models are assumptions.
-- **The classifier is unvalidated.** It uses hand-written rules. "Simple" keywords add points to the score, so several simple questions in one prompt can be routed to `medium`.
+- **The classifier is unvalidated.** It uses hand-written keyword rules, checked only against 24 hand-labelled prompts (23 match), not a real evaluation set. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`, and a simple keyword cancels a harder one ("What is a closure? Implement one in JavaScript." stays `simple`). Keywords are matched anywhere in the text, with no sense of meaning.
 - **Streaming is simpler than the non-streaming path.** Streamed requests fall back to the next tier only before their first chunk (a provider that fails mid-stream reports the error in the stream). They are not cached and not logged, so they do not appear in `/analytics`.
 - **Authentication is one optional shared key.** With `ROUTER_API_KEY` unset (the default, for local dev) any client that can reach the server can send requests. There are no per-user keys or quotas. `/health` and the dashboard page stay public. CORS defaults to `*`.
 - **Rate-limit counts are only shared when Redis is used.** Limits are per API key (or per IP when no key is sent). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process.
@@ -374,7 +376,7 @@ smart-router/
     ├── alembic.ini
     ├── migrations/           # Alembic schema migrations
     ├── tests/
-    │   ├── test_classifier.py  # 30 classifier unit tests
+    │   ├── test_classifier.py  # 64 classifier tests, incl. 24 hand-labelled prompts
     │   ├── test_config.py      # 22 config/cost/default-model tests
     │   ├── test_api.py         # 24 chat-endpoint tests with fake providers
     │   └── test_demo.py        # 14 demo-mode tests

@@ -1,12 +1,20 @@
 """
 Zero-cost heuristic classifier.
 No LLM calls — pure rule-based scoring.
+
+The score measures complexity: signals of a harder prompt add points, and
+"simple" keywords ("what is", "define", ...) take points away, so a prompt
+made of several simple questions stays simple instead of climbing a tier.
 """
 import re
 from dataclasses import dataclass, field
 from typing import Literal
 
 Tier = Literal["simple", "medium", "complex"]
+
+# Tier thresholds on the final score (which is never below 0).
+SIMPLE_MAX = 1   # score 0-1  -> simple
+COMPLEX_MIN = 4  # score 2-3  -> medium, 4 or more -> complex
 
 # Signal keyword lists
 SIMPLE_KEYWORDS = [
@@ -21,7 +29,7 @@ COMPLEX_KEYWORDS = [
     r"\bprove\b", r"\bderive\b", r"\boptimiz", r"\barchitect\b", r"\bimplement\b",
     r"\bdesign a system\b", r"\brefactor\b", r"\bdebug\b", r"\balgorithm\b",
 ]
-CODE_PATTERNS = [r"```", r"\bdef \b", r"\bfunction ", r"\bclass \b", r"\bimport \b", r"=>"]
+CODE_PATTERNS = [r"```", r"\bdef \b", r"\bfunction\s*\w*\s*\(", r"\bclass \b", r"\bimport \b", r"=>"]
 MULTI_STEP_PATTERNS = [
     r"\bfirst\b.{5,50}\bthen\b",
     r"\bstep \d\b",
@@ -30,7 +38,7 @@ MULTI_STEP_PATTERNS = [
 ]
 MATH_LOGIC_PATTERNS = [
     r"\bprove\b", r"\bderive\b", r"\boptimize algorithm\b", r"\bcomplexity\b",
-    r"\bO\(n", r"\bBig-O\b", r"\brecursion\b", r"\bdynamic programming\b",
+    r"\bO\((?:1|n|log)", r"\bBig-O\b", r"\brecursion\b", r"\bdynamic programming\b",
 ]
 
 
@@ -61,18 +69,30 @@ def _matches_any(text: str, patterns: list[str]) -> int:
     return sum(1 for p in patterns if re.search(p, text, re.IGNORECASE | re.MULTILINE))
 
 
+def _confidence(tier: Tier, score: int) -> float:
+    """How far the score sits from the nearest tier boundary: 1 point = 0.5, 2 or more = 1.0."""
+    if tier == "simple":
+        margin = SIMPLE_MAX + 1 - score
+    elif tier == "medium":
+        margin = min(score - SIMPLE_MAX, COMPLEX_MIN - score)
+    else:
+        margin = score - COMPLEX_MIN + 1
+    return round(min(1.0, margin / 2), 2)
+
+
 def classify(messages: list[dict]) -> ClassifierResult:
     """
     Score a conversation and return its complexity tier.
 
     Scoring rules:
-      +2  token count < 100      → simple signal
-      +2  simple keywords match
-      +1  medium keywords match
+      -1  each simple keyword ("what is", "define", ...), at most -2
+      +1  each medium keyword ("explain", "compare", ...), at most +3
+      +2  each complex keyword ("implement", "debug", ...), at most +4
       +2  code patterns detected
       +2  multi-step patterns detected
       +2  math/logic patterns detected
-      +2  token count > 500      → complex signal
+      +2  token count > 500
+    The score is the sum, floored at 0: 0-1 simple, 2-3 medium, 4+ complex.
     """
     full_text = " ".join(
         m.get("content", "") if isinstance(m, dict) else m.content
@@ -87,9 +107,7 @@ def classify(messages: list[dict]) -> ClassifierResult:
         if points:
             signals.append(Signal(name, points, detail))
 
-    # Token-length signals
-    if token_count < 100:
-        add("short prompt", 2, f"about {token_count} tokens (< 100)")
+    # Length: only a long prompt is a signal; being short adds nothing.
     if token_count > 500:
         add("long prompt", 2, f"about {token_count} tokens (> 500)")
 
@@ -98,7 +116,7 @@ def classify(messages: list[dict]) -> ClassifierResult:
     medium_hits = _matches_any(full_text, MEDIUM_KEYWORDS)
     complex_keyword_hits = _matches_any(full_text, COMPLEX_KEYWORDS)
 
-    add("simple keywords", min(simple_hits * 2, 4), f"{simple_hits} matched, e.g. 'what is', 'define' (+2 each, max 4)")
+    add("simple keywords", -min(simple_hits, 2), f"{simple_hits} matched, e.g. 'what is', 'define' (-1 each, max -2)")
     add("medium keywords", min(medium_hits * 1, 3), f"{medium_hits} matched, e.g. 'explain', 'compare' (+1 each, max 3)")
     add("complex keywords", min(complex_keyword_hits * 2, 4),
         f"{complex_keyword_hits} matched, e.g. 'implement', 'debug' (+2 each, max 4)")
@@ -115,26 +133,20 @@ def classify(messages: list[dict]) -> ClassifierResult:
     if _matches_any(full_text, MATH_LOGIC_PATTERNS):
         add("math / logic", 2, "'prove', 'complexity', 'Big-O', 'recursion' ...")
 
-    score = sum(s.points for s in signals)
+    score = max(0, sum(s.points for s in signals))
 
-    # Determine tier
-    # simple: score <= 4, medium: 5–7, complex: >= 8
-    if score <= 4:
-        tier: Tier = "simple"
-        max_score = 4
-    elif score <= 7:
+    tier: Tier
+    if score <= SIMPLE_MAX:
+        tier = "simple"
+    elif score < COMPLEX_MIN:
         tier = "medium"
-        max_score = 7
     else:
         tier = "complex"
-        max_score = 14
-
-    confidence = min(1.0, score / max(max_score, 1))
 
     return ClassifierResult(
         tier=tier,
         score=score,
-        confidence=round(confidence, 2),
+        confidence=_confidence(tier, score),
         token_estimate=token_count,
         signals=signals,
     )

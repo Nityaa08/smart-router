@@ -16,7 +16,7 @@ from ..schemas.request import Message
 
 router = APIRouter(dependencies=[Depends(require_api_key)])
 
-THRESHOLDS = {"simple": "score 0-4", "medium": "score 5-7", "complex": "score 8 or more"}
+THRESHOLDS = {"simple": "score 0-1", "medium": "score 2-3", "complex": "score 4 or more"}
 
 
 class ExplainRequest(BaseModel):

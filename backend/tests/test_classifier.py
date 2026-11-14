@@ -202,3 +202,93 @@ class TestClassify:
             ),
         }])
         assert result.tier == "complex"
+
+
+# ─── Simple keywords pull the score down ─────────────────────────────────────
+
+class TestSimpleSignalsDoNotEscalate:
+    """'What is', 'who is', 'define' ... used to add +2 each, so a prompt with two
+    simple questions scored 6 and went to the medium tier."""
+
+    @pytest.mark.parametrize("prompt", [
+        "What is DNS? How many root servers are there?",
+        "Who is Alan Turing and when was he born?",
+        "Define latency and list the main causes",
+        "What is the capital of France? Who is its president? When was the Eiffel Tower built?",
+    ])
+    def test_several_simple_questions_stay_simple(self, prompt):
+        result = classify([{"role": "user", "content": prompt}])
+        assert result.tier == "simple"
+
+    def test_simple_keywords_subtract_points(self):
+        result = classify([{"role": "user", "content": "What is DNS? How many root servers are there?"}])
+        simple = [s for s in result.signals if s.name == "simple keywords"]
+        assert simple[0].points == -2
+
+    def test_score_never_goes_below_zero(self):
+        result = classify([{"role": "user", "content": "Who is Ada Lovelace? When was she born?"}])
+        assert result.score == 0
+        assert result.confidence == 1.0
+
+    def test_short_length_alone_adds_nothing(self):
+        result = classify([{"role": "user", "content": "hi"}])
+        assert result.score == 0 and result.signals == []
+
+    def test_explanation_requests_reach_medium(self):
+        # Two medium keywords used to score 2 + 2 (short prompt) = 4, i.e. simple.
+        result = classify([{"role": "user", "content": "Explain the difference between TCP and UDP"}])
+        assert result.tier == "medium"
+
+    def test_big_o_with_constant_or_log_counts_as_math(self):
+        for prompt in ("Implement an LRU cache with O(1) get and put", "Search in O(log n)"):
+            result = classify([{"role": "user", "content": prompt}])
+            assert any(s.name == "math / logic" for s in result.signals), prompt
+
+    def test_function_in_prose_is_not_code(self):
+        prose = classify([{"role": "user", "content": "Write a function to reverse a string"}])
+        code = classify([{"role": "user", "content": "Fix this: function add(a, b) { return a - b }"}])
+        assert not any(s.name == "code" for s in prose.signals)
+        assert any(s.name == "code" for s in code.signals)
+
+
+# ─── Hand-labelled prompts ───────────────────────────────────────────────────
+# A small regression set with labels written by hand: 8 prompts per tier. It is
+# not a validation of the classifier, only a check that obvious cases route as
+# expected. Before the scoring change 10 of 24 matched; now 23 of 24 do.
+
+LABELLED = [
+    ("simple", "What is 2+2?"),
+    ("simple", "What is the capital of France? Who is its president? When was the Eiffel Tower built?"),
+    ("simple", "What is DNS? How many root servers are there?"),
+    ("simple", "Define latency and list the main causes"),
+    ("simple", "Who is Alan Turing and when was he born?"),
+    ("simple", "Translate 'good morning' to French and Spanish"),
+    ("simple", "Summarize this in one sentence: the meeting moved to Thursday because the venue was booked."),
+    ("simple", "Name the planets in the solar system"),
+    ("medium", "Explain the difference between TCP and UDP and when to use each"),
+    ("medium", "Compare REST and GraphQL for a mobile app backend and explain the trade-offs"),
+    ("medium", "How does garbage collection work in Java? Explain with an example."),
+    ("medium", "Write a cover letter for a junior data analyst role and describe why I am a good fit"),
+    ("medium", "Explain how neural networks learn, focusing on gradient optimization techniques"),
+    ("medium", "Why does my React component render twice? Explain the common causes."),
+    ("medium", "Describe how HTTPS works and compare it with plain HTTP"),
+    pytest.param("medium", "Analyze the pros and cons of remote work for a small startup",
+                 marks=pytest.mark.xfail(strict=True, reason="one medium keyword scores 1, which is simple")),
+    ("complex", "Implement a recursive algorithm to find all permutations of a list in Python. "
+                "First analyze the complexity, then write the code with tests."),
+    ("complex", "Design a distributed caching system, then implement the consistent hashing algorithm "
+                "and analyze its Big-O complexity"),
+    ("complex", "Implement quicksort in Python with complexity analysis"),
+    ("complex", "Prove that the halting problem is undecidable"),
+    ("complex", "Debug this function and refactor it for speed:\n```python\ndef f(xs):\n"
+                "    return [x for x in xs if xs.count(x) > 1]\n```"),
+    ("complex", "Design a system for real-time fraud detection: first outline the architecture, "
+                "then implement the scoring algorithm"),
+    ("complex", "Derive the time complexity of merge sort from its recurrence, then optimize it for nearly sorted input"),
+    ("complex", "Implement an LRU cache in Python with O(1) get and put"),
+]
+
+
+@pytest.mark.parametrize("expected,prompt", LABELLED)
+def test_labelled_prompt_routes_to_expected_tier(expected, prompt):
+    assert classify([{"role": "user", "content": prompt}]).tier == expected

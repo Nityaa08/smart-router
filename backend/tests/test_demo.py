@@ -128,8 +128,9 @@ class TestExplain:
         assert r.status_code == 200
         x = r.json()
         assert x["tier"] == "simple"
-        assert x["score"] == sum(s["points"] for s in x["signals"])
-        assert {s["name"] for s in x["signals"]} >= {"short prompt", "simple keywords"}
+        assert x["score"] == max(0, sum(s["points"] for s in x["signals"]))
+        simple = [s for s in x["signals"] if s["name"] == "simple keywords"]
+        assert simple and simple[0]["points"] < 0  # simple keywords pull the score down
         assert [t["tier"] for t in x["tiers"]] == ["simple", "medium", "complex"]
         assert x["baseline"]["model"] == BASELINE_MODEL
 
@@ -141,7 +142,7 @@ class TestExplain:
         ]
         for p in prompts:
             r = classify([{"role": "user", "content": p}])
-            assert r.score == sum(s.points for s in r.signals), p
+            assert r.score == max(0, sum(s.points for s in r.signals)), p
 
 
 class TestGuards:
