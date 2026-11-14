@@ -193,6 +193,12 @@ class TestPages:
         dash = client.get("/dashboard")
         assert dash.status_code == 200 and "<title>Smart Router</title>" in dash.text
 
+    def test_playground_shows_the_summary_and_reads_the_eval(self, client):
+        home = client.get("/").text
+        assert "The 60-second version" in home and "Routing report card" in home
+        assert 'fetch("/v1/route/eval")' in home
+        assert client.get("/v1/route/eval").status_code == 200
+
 
 def test_demo_models_are_priced():
     cfg = get_settings()

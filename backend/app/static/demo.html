@@ -240,6 +240,42 @@ footer .mono{font-size:12px}
   .count .hint{display:none}
   .zones b{display:none}
 }
+
+/* ── 60-second brief + routing report card ── */
+.brief{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;margin-bottom:16px;align-items:start}
+.brief .pb{padding:16px 18px}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.facts dt{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--info);margin-bottom:5px}
+.facts dd{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.facts dd b{color:var(--ink);font-weight:600}
+.tour{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line-2)}
+.tour .lbl{margin:0 4px 0 0}
+.tour button,.tour a{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel-2);border:1px solid var(--line-2);padding:6px 10px;border-radius:8px;cursor:pointer;text-decoration:none}
+.tour button:hover,.tour a:hover{border-color:var(--info)}
+.tour b{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--info);color:#0a0e13;font-size:11px}
+.stack{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.stack span{font-family:var(--mono);font-size:11px;color:var(--ink-3);border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.card-top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.big{font-family:var(--mono);font-size:34px;font-weight:650;letter-spacing:-.02em;line-height:1;color:var(--simple)}
+.big small{font-size:16px;color:var(--ink-3);font-weight:500}
+.card-top p{font-size:13px;color:var(--ink-2)}
+.cm{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));gap:3px;margin-top:14px;font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums}
+.cm > span{padding:5px 6px;text-align:center;color:var(--ink-3)}
+.cm .rh{text-align:right;padding-right:8px}
+.cm .c{background:var(--well);border:1px solid var(--line);border-radius:5px;color:var(--ink-3)}
+.cm .c.hit{color:#0a0e13;font-weight:650}
+.cm .c.miss{color:var(--bad);border-color:var(--bad);background:var(--bad-bg);font-weight:650}
+.cmcap{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:5px;text-align:right}
+.missline{margin-top:12px;font-size:12.5px;color:var(--ink-2);border-left:2px solid var(--bad);padding-left:10px}
+.missline code{color:var(--ink)}
+.costs{margin-top:12px;display:grid;gap:6px;font-family:var(--mono);font-size:11.5px}
+.costs div{display:grid;grid-template-columns:118px minmax(0,1fr) 64px;gap:8px;align-items:center;color:var(--ink-3)}
+.costs i{display:block;height:6px;border-radius:3px;background:var(--line-2)}
+.costs .r i{background:var(--simple)}
+.costs em{font-style:normal;color:var(--ink-2);text-align:right}
+.fine{font-size:11.5px;color:var(--ink-3);margin-top:10px;line-height:1.5}
+@media (max-width:980px){.brief{grid-template-columns:1fr}}
+@media (max-width:640px){.facts{grid-template-columns:1fr;gap:12px}.costs div{grid-template-columns:96px minmax(0,1fr) 58px}}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
@@ -275,6 +311,30 @@ footer .mono{font-size:12px}
     </dl>
   </section>
 
+
+  <section class="brief" aria-label="Project summary">
+    <div class="panel">
+      <div class="ph"><h2>The 60-second version</h2><span style="text-transform:none;letter-spacing:0">Python · FastAPI</span></div>
+      <div class="pb">
+        <dl class="facts">
+          <div><dt>Problem</dt><dd>Apps send every prompt to one expensive model, even <b>“what is 2+2?”</b>. Most prompts don’t need it.</dd></div>
+          <div><dt>What I built</dt><dd>A drop-in <b>OpenAI-compatible gateway</b> that scores each prompt with rules in under 1 ms, picks the cheapest tier that fits, falls back if a provider fails, and logs the cost.</dd></div>
+          <div><dt>Proof</dt><dd><b id="bf-acc">23 of 24</b> hand-labelled prompts routed to the right tier, <b>138</b> tests, CI on every push. The one miss is shown, not hidden.</dd></div>
+        </dl>
+        <div class="tour" role="group" aria-label="Try it">
+          <span class="lbl">Try it</span>
+          <button type="button" data-ex="0"><b>1</b>route a simple prompt</button>
+          <button type="button" data-ex="2"><b>2</b>route a complex one</button>
+          <a href="/dashboard"><b>3</b>see the cost dashboard</a>
+        </div>
+        <div class="stack" aria-label="Built with"><span>FastAPI</span><span>async httpx</span><span>Pydantic</span><span>Redis cache</span><span>Postgres + Alembic</span><span>SSE streaming</span><span>pytest</span><span>Docker</span><span>GitHub Actions</span></div>
+      </div>
+    </div>
+    <section class="panel" aria-labelledby="rc-h">
+      <div class="ph"><h2 id="rc-h">Routing report card</h2><a href="/v1/route/eval" style="text-transform:none;letter-spacing:0">raw json →</a></div>
+      <div class="pb" id="rc"><p class="muted">Running the classifier over the labelled prompts…</p></div>
+    </section>
+  </section>
   <div class="board">
     <form class="panel" id="form" aria-labelledby="console-h">
       <div class="ph">
@@ -645,6 +705,33 @@ print(r.headers["x-router-tier"], r.headers["x-router-model"])
     } catch (e) {}
   }
 
+
+  // ── routing report card (GET /v1/route/eval: the real classifier over the labelled prompts) ──
+  document.querySelectorAll(".tour button[data-ex]").forEach((b) => {
+    b.onclick = () => {
+      const [, , text] = EXAMPLES[+b.dataset.ex];
+      $("prompt").value = text; count(); send();
+      $("form").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    };
+  });
+  fetch("/v1/route/eval").then(r => r.json()).then(ev => {
+    $("bf-acc").textContent = `${ev.correct} of ${ev.total}`;
+    const cells = TIERS.map(exp => `<span class="rh">${exp}</span>` + TIERS.map(got => {
+      const n = ev.confusion[exp][got];
+      const cls = exp === got ? "c hit" : n ? "c miss" : "c";
+      const st = exp === got && n ? ` style="background:${COLOR[got]};border-color:${COLOR[got]}"` : "";
+      return `<span class="${cls}"${st}>${n}</span>`;
+    }).join("")).join("");
+    const miss = ev.misses.map(m => `<p class="missline">Miss: <code>${esc(m.prompt)}</code> is labelled ${m.expected} but scores ${m.score}, so it goes to ${m.routed}${m.note ? ` (${esc(m.note)})` : ""}.</p>`).join("");
+    const c = ev.cost, max = c.baseline_usd_per_1k_runs || 1;
+    const bar = (cls, name, v) => `<div class="${cls}"><span>${name}</span><i style="width:${Math.max(2, v / max * 100)}%"></i><em>${usd(v)}</em></div>`;
+    $("rc").innerHTML =
+      `<div class="card-top"><span class="big">${ev.correct}<small>/${ev.total}</small></span><p>prompts routed to the tier a person labelled them (${Math.round(ev.accuracy * 100)}%). ${ev.routed_too_low} sent too low, ${ev.routed_too_high} too high.</p></div>` +
+      `<div class="cm" role="table" aria-label="Confusion matrix: labelled tier by row, routed tier by column"><span></span>${TIERS.map(t => `<span>${t}</span>`).join("")}${cells}</div>` +
+      `<p class="cmcap">rows: labelled · columns: routed</p>` + miss +
+      `<div class="costs" aria-label="Prompt cost of the 24 prompts, per 1,000 runs">${bar("r", "routed", c.routed_usd_per_1k_runs)}${bar("", "all on complex", c.all_complex_usd_per_1k_runs)}${bar("", c.baseline_model, c.baseline_usd_per_1k_runs)}</div>` +
+      `<p class="fine">Cost of the set's prompt tokens per 1,000 runs, at list prices. The rules were tuned with these prompts in view, so this is a regression check, not a held-out accuracy.</p>`;
+  }).catch(() => { $("rc").innerHTML = `<p class="muted">Could not load the report card.</p>`; });
   $("form").addEventListener("submit", send);
   preview();
   loadStats();

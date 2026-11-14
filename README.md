@@ -6,7 +6,7 @@
 
 > **An OpenAI-compatible LLM gateway that routes each prompt to one of three model tiers using hand-written rules, and estimates the cost of every request.**
 
-[![Demo page: a prompt console on the left; on the right a switchboard of three tier lanes with the routed lane lit, a score gauge against the tier thresholds, the rules that fired with their points, and the estimated cost against GPT-4o](docs/screenshot.png)](https://smart-router-nityashree.vercel.app)
+[![Demo page: a 60-second summary with three try-it buttons, and a routing report card showing 23 of 24 labelled prompts routed correctly, a confusion matrix, the one miss and a cost comparison; below, the prompt console and the tier switchboard](docs/screenshot.png)](https://smart-router-nityashree.vercel.app)
 
 ### Run it in 1 minute
 
@@ -16,12 +16,22 @@ Needs Python 3.12 (the pinned `asyncpg` does not build on 3.13) and `make`. No A
 git clone https://github.com/Nityaa08/smart-router && cd smart-router
 make demo    # creates .venv, installs, serves demo mode at http://localhost:8000
 make test    # the unit test suite (no database, Redis or LLM needed)
+make eval    # routing accuracy on 24 hand-labelled prompts, with a confusion matrix
 ```
 
 Without `make`: `cd backend && pip install -r requirements.txt && PROVIDER=demo DATABASE_URL=memory REDIS_URL=none uvicorn app.main:app --reload`.
 With Docker (Postgres + Redis + a real provider): `cp .env.example .env`, set a provider in `.env`, then `make dev` (or `docker compose up --build`). See [Quick Start](#quick-start).
 
 ---
+
+## In 60 seconds
+
+| | |
+|---|---|
+| **Problem** | Apps send every prompt to one expensive model, including "what is 2+2?". Most prompts don't need it. |
+| **What I built** | A drop-in, OpenAI-compatible gateway. Rules score each prompt in under a millisecond, the cheapest tier that fits answers, a failing provider falls back to the next tier, and every request is logged with its cost. |
+| **Proof** | 23 of 24 hand-labelled prompts reach the labelled tier ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with a confusion matrix). 139 unit tests, CI on every push. |
+| **Engineering** | FastAPI, async httpx, Pydantic, Redis cache, Postgres with Alembic, SSE streaming, rate limiting per API key, Docker, GitHub Actions. |
 
 ## The Problem
 
@@ -109,7 +119,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **132 unit tests** | Classifier, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **139 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -196,6 +206,28 @@ The score measures complexity, so simple keywords take points away. Until 2026-1
 
 ---
 
+## Routing eval
+
+`make eval` (or `GET /v1/route/eval`, which the demo page draws as a report card) runs the real classifier over the 24 hand-labelled prompts in [`backend/app/evals/labelled.py`](backend/app/evals/labelled.py), 8 per tier:
+
+```
+23/24 routed to the labelled tier (96%)
+labelled \ routed   simple   medium  complex
+           simple        8        0        0
+           medium        1        7        0
+          complex        0        0        8
+miss: medium -> simple (score 1): Analyze the pros and cons of remote work for a small startup
+cost per 1k runs of the set (prompt (input) tokens only, at list prices): $0.0162 routed vs $0.0207 all on the complex tier vs $1.0325 on gpt-4o
+```
+
+How to read it:
+
+- **The one miss goes down a tier**, which is the costly kind of mistake (a weaker model answers), so the report counts "too low" and "too high" separately.
+- **Routing itself saves about a fifth** of the prompt cost here compared with sending everything to the complex tier ($0.0162 vs $0.0207 with the Groq defaults). Most of the gap to GPT-4o comes from the cheaper open models, not from routing.
+- **This is not a held-out score.** The rules were adjusted with these prompts in view (10 of 24 matched before the scoring change on 2026-11-14), so it is a regression check that keeps obvious cases right. A real evaluation needs prompts the rules were not tuned on.
+
+The test suite reads the same list, so a rule change that breaks a labelled case fails CI.
+
 ## API Reference
 
 ### `POST /v1/chat/completions`
@@ -262,7 +294,7 @@ make test
 make smoke
 ```
 
-The unit test suite has 132 tests (64 classifier, 22 config/cost/default-model, 31 API, 15 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 139 tests (64 classifier, 22 config/cost/default-model, 31 API, 16 demo mode, 6 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make smoke` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make smoke ROUTER_API_KEY=your-key`.
 
@@ -330,7 +362,7 @@ On 2026-11-02 streaming and the rate limit were checked against the same fake se
 ## Known Limitations (checked 2026-11-14)
 
 - **Savings are an estimate, not a measurement.** `cost_saved` prices the tokens the chosen model used at GPT-4o list prices (from `config.py`) and subtracts the chosen model's price. Answer quality is not compared, and there is no evaluation set yet. The small-model prices for local Ollama models are assumptions.
-- **The classifier is unvalidated.** It uses hand-written keyword rules, checked only against 24 hand-labelled prompts (23 match), not a real evaluation set. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`, and a simple keyword cancels a harder one ("What is a closure? Implement one in JavaScript." stays `simple`). Keywords are matched anywhere in the text, with no sense of meaning.
+- **The classifier is unvalidated.** It uses hand-written keyword rules, checked only against 24 hand-labelled prompts (23 match, see [Routing eval](#routing-eval)) that it was tuned on, not a held-out evaluation set. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`, and a simple keyword cancels a harder one ("What is a closure? Implement one in JavaScript." stays `simple`). Keywords are matched anywhere in the text, with no sense of meaning.
 - **Streaming is simpler than the non-streaming path.** Streamed requests fall back to the next tier only before their first chunk (a provider that fails mid-stream reports the error in the stream). They are not cached. They are logged to `/analytics`, but the providers' streams carry no token usage, so their tokens and cost are estimated at about 4 characters per token from the prompt and the streamed text, and their latency is the time until the stream ended. A stream that stops early (provider error or client disconnect) is logged with status `stream_incomplete` and the text sent so far. In demo mode a streamed answer is therefore priced lower than the same answer non-streamed, which uses a typical answer length per tier.
 - **Authentication is one optional shared key.** With `ROUTER_API_KEY` unset (the default, for local dev) any client that can reach the server can send requests. There are no per-user keys or quotas. `/health` and the dashboard page stay public. CORS defaults to `*`.
 - **Rate-limit counts are only shared when Redis is used.** Limits are per API key (or per IP when no key is sent). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process.
@@ -390,16 +422,18 @@ smart-router/
     ├── alembic.ini
     ├── migrations/           # Alembic schema migrations
     ├── tests/
-    │   ├── test_classifier.py  # 64 classifier tests, incl. 24 hand-labelled prompts
+    │   ├── test_classifier.py  # 64 classifier tests, incl. the 24 hand-labelled prompts
     │   ├── test_config.py      # 22 config/cost/default-model tests
     │   ├── test_api.py         # 31 chat-endpoint tests with fake providers
-    │   └── test_demo.py        # 15 demo-mode tests
+    │   ├── test_demo.py        # 16 demo-mode tests
+    │   └── test_eval.py        # 6 routing-eval tests
     └── app/
         ├── main.py           # FastAPI app (CORS, rate-limit handler, static files)
         ├── security.py       # Rate limiter + optional API key check
         ├── config.py         # Settings + DATABASE_URL scheme normalizer
         ├── database.py       # Async SQLAlchemy
         ├── classifier/       # Zero-cost heuristic scorer
+        ├── evals/            # Hand-labelled prompts + routing eval (make eval, /v1/route/eval)
         ├── providers/        # Ollama · Groq · OpenRouter · Generic OpenAI-compat · Demo
         ├── router/           # classify → route → log (Postgres, or memlog.py in memory)
         ├── api/              # /v1/chat/completions · /v1/route/explain · /analytics · /health
