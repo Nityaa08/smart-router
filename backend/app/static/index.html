@@ -4,502 +4,271 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Smart Router</title>
+<meta name="description" content="Smart Router dashboard: requests by tier, estimated cost against GPT-4o, and a chat console.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0e13">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#09090b;
-  --s1:#111113;
-  --s2:#18181b;
-  --s3:#27272a;
-  --b1:#27272a;
-  --b2:#3f3f46;
-  --t1:#fafafa;
-  --t2:#a1a1aa;
-  --t3:#71717a;
-  --t4:#3f3f46;
-  --gr:#22c55e;--grd:rgba(34,197,94,.1);--grb:rgba(34,197,94,.2);
-  --am:#f59e0b;--amd:rgba(245,158,11,.08);--amb:rgba(245,158,11,.18);
-  --rd:#ef4444;--rdd:rgba(239,68,68,.08);--rdb:rgba(239,68,68,.18);
-  --bl:#3b82f6;--bld:rgba(59,130,246,.08);--blb:rgba(59,130,246,.18);
-  --pu:#a78bfa;--pud:rgba(167,139,250,.08);--pub:rgba(167,139,250,.2);
-  --r:10px;
-  --font:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
-  --mono:'SF Mono','Fira Code','Cascadia Code',monospace;
+  --bg:#0a0e13; --panel:#10161d; --panel-2:#141b24; --well:#0c1117;
+  --line:#1f2832; --line-2:#2c3743;
+  --ink:#e6edf3; --ink-2:#a9b4bf; --ink-3:#8593a1;
+  --simple:#4ade80; --medium:#fbbf24; --complex:#b69cff; --bad:#ff7b72; --info:#7cc7ff;
+  --simple-bg:rgba(74,222,128,.08); --medium-bg:rgba(251,191,36,.08); --complex-bg:rgba(182,156,255,.09); --bad-bg:rgba(255,123,114,.08); --info-bg:rgba(124,199,255,.08);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --r:12px;
 }
-html{-webkit-font-smoothing:antialiased;font-size:16px}
-body{background:var(--bg);color:var(--t1);font-family:var(--font);line-height:1.5;min-height:100vh}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;color-scheme:dark}
+body{
+  background-color:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh;
+  background-image:linear-gradient(rgba(148,163,184,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.045) 1px,transparent 1px);
+  background-size:32px 32px;background-position:-1px -1px;
+}
+a{color:inherit;text-underline-offset:3px}
+code{font-family:var(--mono);font-size:.88em}
+:focus-visible{outline:2px solid var(--info);outline-offset:2px;border-radius:6px}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
 
-/* ── NAV ──────────────────────────────────────────── */
-nav{
-  position:sticky;top:0;z-index:99;
-  height:52px;padding:0 28px;
-  display:flex;align-items:center;justify-content:space-between;
-  background:rgba(9,9,11,.8);backdrop-filter:blur(24px) saturate(1.8);
-  border-bottom:1px solid var(--b1);
-}
-.logo{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700;letter-spacing:-.03em}
-.logo-mark{
-  width:26px;height:26px;border-radius:7px;flex-shrink:0;
-  background:linear-gradient(135deg,#16a34a,#22c55e);
-  display:flex;align-items:center;justify-content:center;
-}
-.nav-r{display:flex;align-items:center;gap:14px}
-.pill{display:flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:12px;border:1px solid var(--b1);background:var(--s2)}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--t4);flex-shrink:0}
-.dot.on{background:var(--gr);animation:glow 2.5s ease-in-out infinite}
-@keyframes glow{0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,.12)}50%{box-shadow:0 0 0 6px rgba(34,197,94,.04)}}
-.tag{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;font-family:var(--mono)}
-.tag-bl{background:var(--bld);color:var(--bl);border:1px solid var(--blb)}
-.nav-a{font-size:13px;color:var(--t3);text-decoration:none;transition:color .15s}
-.nav-a:hover{color:var(--t1)}
+header{border-bottom:1px solid var(--line);background:rgba(10,14,19,.86);backdrop-filter:blur(8px);position:sticky;top:0;z-index:5}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;height:56px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:14px;font-weight:600;white-space:nowrap;text-decoration:none}
+.brand span{color:var(--ink-3);font-weight:400}
+nav{display:flex;gap:4px;align-items:center;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+nav a{text-decoration:none;color:var(--ink-2);padding:6px 9px;border-radius:6px}
+nav a:hover{color:var(--ink);background:var(--panel-2)}
+.chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--ink-3)}
+.chip.ok{color:var(--simple);border-color:rgba(74,222,128,.35);background:var(--simple-bg)}
+.chip.ok i{background:var(--simple);box-shadow:0 0 0 3px rgba(74,222,128,.18)}
+.chip.bad{color:var(--bad);border-color:rgba(255,123,114,.45);background:var(--bad-bg)}
+.chip.bad i{background:var(--bad)}
 
-/* ── LAYOUT ───────────────────────────────────────── */
-.wrap{max-width:1180px;margin:0 auto;padding:36px 28px 60px}
+.intro{display:flex;justify-content:space-between;align-items:flex-end;gap:16px 24px;padding:24px 0 18px;flex-wrap:wrap}
+h1{font-size:clamp(22px,2.6vw,28px);font-weight:650;letter-spacing:-.02em;line-height:1.2}
+.lede{color:var(--ink-2);max-width:680px;margin-top:6px}
+.intro .chips{display:flex;gap:8px;flex-wrap:wrap}
 
-/* ── HERO ─────────────────────────────────────────── */
-.hero{
-  display:grid;grid-template-columns:1fr 1fr;
-  border:1px solid var(--b1);border-radius:var(--r);overflow:hidden;
-  margin-bottom:3px;
-}
-.hero-cell{
-  background:var(--s1);padding:36px 40px;
-  display:flex;flex-direction:column;gap:12px;
-  position:relative;overflow:hidden;
-}
-.hero-cell:first-child{border-right:1px solid var(--b1)}
-.hero-cell::after{
-  content:'';position:absolute;bottom:-40px;right:-40px;
-  width:180px;height:180px;border-radius:50%;
-  opacity:.03;
-}
-.hero-cell:first-child::after{background:var(--gr)}
-.hero-cell:last-child::after{background:var(--bl)}
-.hero-eyebrow{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--t4)}
-.hero-num{
-  font-size:72px;font-weight:900;line-height:.95;letter-spacing:-.05em;
-  font-variant-numeric:tabular-nums;
-  background:linear-gradient(160deg,#86efac 0%,#22c55e 60%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-.hero-num-b{
-  font-size:52px;
-  background:linear-gradient(160deg,#93c5fd 0%,#3b82f6 60%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-.hero-desc{font-size:13px;color:var(--t3)}
+.sec{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px}
+.sec h2{font-size:inherit;font-weight:600;color:var(--ink-2)}
+.sec span{text-transform:none;letter-spacing:0}
 
-/* ── STATS ROW ────────────────────────────────────── */
-.stats{
-  display:grid;grid-template-columns:repeat(3,1fr);
-  border:1px solid var(--b1);border-radius:var(--r);overflow:hidden;
-  margin-bottom:36px;margin-top:3px;
-}
-.stat{background:var(--s1);padding:22px 28px}
-.stat+.stat{border-left:1px solid var(--b1)}
-.stat-ey{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--t4);margin-bottom:10px}
-.stat-v{font-size:30px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
-.v-bl{color:var(--bl)}.v-am{color:var(--am)}.v-gr{color:var(--gr)}.v-mu{color:var(--t2)}
-.stat-s{font-size:12px;color:var(--t4);margin-top:5px}
+/* readouts */
+.readouts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.ro{padding:16px 18px;border-left:1px solid var(--line);min-width:0}
+.ro:first-child{border-left:0}
+.ro dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.ro dd{font-family:var(--mono);font-size:28px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.25;margin-top:4px}
+.ro dd.save{color:var(--simple)}
+.ro small{display:block;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:2px;overflow-wrap:anywhere}
 
-/* ── SECTION LABEL ────────────────────────────────── */
-.sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--t4);margin-bottom:10px}
+/* lanes */
+.lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.lane{--c:var(--ink-3);border:1px solid var(--line);border-top:2px solid var(--c);border-radius:var(--r);background:var(--panel);padding:14px 16px}
+.lane[data-tier=simple]{--c:var(--simple)}.lane[data-tier=medium]{--c:var(--medium)}.lane[data-tier=complex]{--c:var(--complex)}
+.lane .hd{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:13px}
+.lane .hd b{color:var(--c);font-weight:600}
+.lane .hd em{font-style:normal;color:var(--ink-3);font-size:11.5px}
+.lane .model{font-family:var(--mono);font-size:13px;margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lane .desc{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.lane .price{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);margin-top:8px}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:var(--c);border-radius:3px;transition:width .6s ease}
+.lane .ft{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.lane .ft b{color:var(--ink);font-weight:600}
 
-/* ── TIER CARDS ───────────────────────────────────── */
-.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:36px}
-.tc{
-  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);
-  padding:22px;position:relative;overflow:hidden;
-  transition:border-color .2s,transform .15s;cursor:default;
-}
-.tc:hover{transform:translateY(-2px)}
-.tc-s{border-color:var(--grb)}.tc-m{border-color:var(--amb)}.tc-c{border-color:var(--rdb)}
-.tc::before{content:'';position:absolute;top:0;left:0;right:0;height:1px}
-.tc-s::before{background:linear-gradient(90deg,var(--gr),transparent)}
-.tc-m::before{background:linear-gradient(90deg,var(--am),transparent)}
-.tc-c::before{background:linear-gradient(90deg,var(--rd),transparent)}
-.tc-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;display:inline-block;padding:2px 8px;border-radius:4px}
-.tc-s .tc-badge{background:var(--grd);color:var(--gr);border:1px solid var(--grb)}
-.tc-m .tc-badge{background:var(--amd);color:var(--am);border:1px solid var(--amb)}
-.tc-c .tc-badge{background:var(--rdd);color:var(--rd);border:1px solid var(--rdb)}
-.tc-model{font-size:17px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em;margin-bottom:4px}
-.tc-desc{font-size:12px;color:var(--t3);margin-bottom:14px;line-height:1.5}
-.tc-price{font-size:12px;font-weight:600;font-family:var(--mono);color:var(--t4);margin-bottom:12px}
-.bar-t{height:4px;background:var(--s3);border-radius:2px;overflow:hidden;margin-bottom:8px}
-.bar-f{height:100%;border-radius:2px;transition:width .9s cubic-bezier(.4,0,.2,1)}
-.tc-s .bar-f{background:var(--gr)}.tc-m .bar-f{background:var(--am)}.tc-c .bar-f{background:var(--rd)}
-.tc-foot{display:flex;justify-content:space-between;font-size:11px;color:var(--t4);font-family:var(--mono)}
+/* console + log */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.ph h3{font-size:inherit;font-weight:600;color:var(--ink-2)}
+.ph span{text-transform:none;letter-spacing:0}
+.frow{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.flbl{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-right:4px}
+.fb{font-family:var(--mono);font-size:12px;padding:4px 11px;border-radius:6px;border:1px solid var(--line-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.fb:hover{color:var(--ink);border-color:#3c4957}
+.fb[aria-pressed=true]{color:#0a0e13;border-color:transparent;background:var(--info)}
+.fb[data-t=simple][aria-pressed=true]{background:var(--simple)}
+.fb[data-t=medium][aria-pressed=true]{background:var(--medium)}
+.fb[data-t=complex][aria-pressed=true]{background:var(--complex)}
 
-/* ── MAIN GRID ────────────────────────────────────── */
-.grid{display:grid;grid-template-columns:1fr 360px;gap:12px;align-items:start}
-
-/* ── CHAT CARD ────────────────────────────────────── */
-.card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden}
-.card-hd{padding:14px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between}
-.card-hd-t{font-size:13px;font-weight:600}
-.card-hd-s{font-size:11px;color:var(--t4)}
-
-/* Force row */
-.frow{padding:12px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:6px}
-.flbl{font-size:11px;color:var(--t4);margin-right:2px}
-.fb{padding:3px 11px;border-radius:5px;font-size:11px;font-weight:600;font-family:var(--mono);border:1px solid var(--b1);background:transparent;color:var(--t3);cursor:pointer;transition:all .15s}
-.fb:hover{color:var(--t1);border-color:var(--b2)}
-.fb.a-a{color:var(--bl);border-color:var(--blb);background:var(--bld)}
-.fb.a-s{color:var(--gr);border-color:var(--grb);background:var(--grd)}
-.fb.a-m{color:var(--am);border-color:var(--amb);background:var(--amd)}
-.fb.a-c{color:var(--rd);border-color:var(--rdb);background:var(--rdd)}
-
-/* Messages */
-.msgs{padding:20px;min-height:280px;max-height:460px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
-.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:280px;gap:14px;color:var(--t4);text-align:center}
-.empty-icon{width:44px;height:44px;border-radius:11px;background:var(--s2);border:1px solid var(--b1);display:flex;align-items:center;justify-content:center}
-.empty-title{font-size:14px;font-weight:600;color:var(--t2)}
-.empty-sub{font-size:13px;line-height:1.6;max-width:280px;color:var(--t4)}
-.examples{display:flex;flex-direction:column;gap:6px;width:100%;max-width:340px;margin-top:4px}
-.ex-btn{
-  background:var(--s2);border:1px solid var(--b1);border-radius:8px;
-  padding:9px 13px;color:var(--t3);font-size:12px;cursor:pointer;
-  text-align:left;transition:all .15s;display:flex;align-items:center;justify-content:space-between;gap:8px;
-  font-family:var(--font);
-}
-.ex-btn:hover{border-color:var(--b2);color:var(--t1);background:var(--s3)}
+.msgs{padding:16px;min-height:300px;max-height:480px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;background:var(--well)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:268px;gap:10px;text-align:center}
+.empty p{font-size:13.5px;color:var(--ink-3);max-width:340px}
+.examples{display:flex;flex-direction:column;gap:6px;width:100%;max-width:420px;margin-top:6px}
+.ex{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;padding:9px 12px;color:var(--ink-2);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.ex:hover{color:var(--ink);border-color:#3c4957}
+.tg{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;padding:1px 7px;border-radius:4px;border:1px solid;white-space:nowrap}
+.tg.simple{color:var(--simple);border-color:rgba(74,222,128,.4)}
+.tg.medium{color:var(--medium);border-color:rgba(251,191,36,.4)}
+.tg.complex{color:var(--complex);border-color:rgba(182,156,255,.45)}
+.tg.n{color:var(--ink-2);border-color:var(--line-2)}
+.tg.sv{color:var(--simple);border-color:rgba(74,222,128,.3);background:var(--simple-bg)}
+.tg.ca{color:var(--info);border-color:rgba(124,199,255,.4)}
 
 .msg{animation:up .18s ease}
-@keyframes up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes up{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .mu{display:flex;justify-content:flex-end}
-.bu{max-width:80%;padding:10px 14px;background:var(--bld);border:1px solid var(--blb);border-radius:14px 14px 3px 14px;font-size:13px;line-height:1.55}
-.mb{display:flex;flex-direction:column;gap:8px}
+.bu{max-width:82%;padding:9px 13px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:12px 12px 3px 12px;font-size:13.5px;overflow-wrap:anywhere}
+.mb{display:flex;flex-direction:column;gap:7px}
+.path{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.bb{padding:11px 13px;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--tc,var(--line-2));border-radius:3px 10px 10px 10px;font-family:var(--mono);font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink-2)}
+.meta{display:flex;flex-wrap:wrap;gap:5px}
+.errm{padding:10px 13px;background:var(--bad-bg);border:1px solid rgba(255,123,114,.45);border-radius:3px 10px 10px 10px;font-size:13px;color:#ffb3ad}
+.think{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.think::after{content:"▍";animation:blink 1s steps(1) infinite;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
 
-/* Route pill */
-.rpill{
-  display:inline-flex;align-items:center;gap:5px;
-  padding:7px 11px;background:var(--bg);border:1px solid var(--b1);border-radius:8px;
-  font-size:11px;font-family:var(--mono);white-space:nowrap;overflow-x:auto;
-  align-self:flex-start;
-}
-.rn{padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px}
-.rn-d{background:var(--s3);color:var(--t3)}
-.rn-simple{background:var(--grd);color:var(--gr);border:1px solid var(--grb)}
-.rn-medium{background:var(--amd);color:var(--am);border:1px solid var(--amb)}
-.rn-complex{background:var(--rdd);color:var(--rd);border:1px solid var(--rdb)}
-.ra{color:var(--t4);font-size:10px}
+.inp{padding:12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:flex-end}
+.inp label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+textarea{flex:1;background:var(--well);border:1px solid var(--line-2);border-radius:9px;color:var(--ink);font-family:var(--mono);font-size:13px;padding:10px 12px;resize:none;outline:none;line-height:1.5;min-height:42px;max-height:120px}
+textarea:focus{border-color:var(--info);box-shadow:0 0 0 3px rgba(124,199,255,.15)}
+textarea:focus-visible{outline:none}
+textarea::placeholder{color:var(--ink-3)}
+.sbtn{height:42px;padding:0 18px;background:var(--simple);color:#06120a;border:none;border-radius:9px;font:inherit;font-weight:650;font-size:14px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.sbtn:hover{filter:brightness(1.08)}.sbtn:disabled{opacity:.5;cursor:wait}
 
-.bb{padding:11px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:3px 14px 14px 14px;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
-.meta{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
-.chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;font-family:var(--mono)}
-.ch-s{background:var(--grd);color:var(--gr);border:1px solid var(--grb)}
-.ch-m{background:var(--amd);color:var(--am);border:1px solid var(--amb)}
-.ch-c{background:var(--rdd);color:var(--rd);border:1px solid var(--rdb)}
-.ch-n{background:var(--s3);color:var(--t3);border:1px solid var(--b1)}
-.ch-sv{background:rgba(34,197,94,.06);color:var(--gr);border:1px solid var(--grb)}
-.ch-ca{background:var(--pud);color:var(--pu);border:1px solid var(--pub)}
-
-/* Thinking */
-.think{display:flex;gap:5px;padding:11px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:3px 14px 14px 14px;width:fit-content}
-.td{width:6px;height:6px;border-radius:50%;background:var(--t4);animation:bob 1.1s ease-in-out infinite}
-.td:nth-child(2){animation-delay:.15s}.td:nth-child(3){animation-delay:.3s}
-@keyframes bob{0%,60%,100%{transform:translateY(0);background:var(--t4)}30%{transform:translateY(-7px);background:var(--bl)}}
-
-/* Input */
-.inp-row{padding:14px;border-top:1px solid var(--b1);display:flex;gap:8px;align-items:flex-end}
-textarea{
-  flex:1;background:var(--bg);border:1px solid var(--b1);border-radius:9px;
-  color:var(--t1);font-family:var(--font);font-size:13px;padding:10px 14px;
-  resize:none;outline:none;transition:border-color .15s;line-height:1.5;
-  min-height:42px;max-height:120px;
-}
-textarea:focus{border-color:rgba(59,130,246,.4)}
-textarea::placeholder{color:var(--t4)}
-.sbtn{
-  height:42px;padding:0 18px;
-  background:var(--gr);color:#000;border:none;border-radius:9px;
-  font-weight:700;font-size:13px;cursor:pointer;
-  transition:opacity .15s,transform .1s;white-space:nowrap;flex-shrink:0;
-}
-.sbtn:hover{opacity:.85}.sbtn:active{transform:scale(.96)}.sbtn:disabled{opacity:.25;cursor:not-allowed}
-
-/* ── RIGHT COL ────────────────────────────────────── */
-.rcol{display:flex;flex-direction:column;gap:12px}
-
-/* Dist */
-.dist{display:flex;flex-direction:column;gap:13px}
-.dr{display:flex;align-items:center;gap:9px}
-.dl{width:55px;font-size:12px;font-weight:600;font-family:var(--mono)}
-.dt{flex:1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden}
-.df{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1)}
-.df-s{background:var(--gr)}.df-m{background:var(--am)}.df-c{background:var(--rd)}
-.dp{width:32px;text-align:right;font-size:12px;font-weight:700;font-family:var(--mono)}
-.dn{width:26px;text-align:right;font-size:11px;color:var(--t4);font-family:var(--mono)}
-
-/* Log */
-.loglist{display:flex;flex-direction:column}
-.logrow{display:grid;grid-template-columns:auto 1fr auto auto;gap:7px;align-items:center;padding:8px 0;border-bottom:1px solid var(--b1);font-size:12px}
+.loglist{display:flex;flex-direction:column;padding:4px 16px 8px}
+.logrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
 .logrow:last-child{border:none}
-.logp{color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.logl{color:var(--t4);font-family:var(--mono);white-space:nowrap}
-.logs{color:var(--gr);font-family:var(--mono);white-space:nowrap}
-.nodata{color:var(--t4);font-size:12px;text-align:center;padding:18px 0}
+.logp{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logl{color:var(--ink-3);font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.logs{color:var(--simple);font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.nodata{color:var(--ink-3);font-size:13px;text-align:center;padding:22px 0}
+.note{font-size:12.5px;color:var(--ink-3);padding:12px 16px;border-top:1px solid var(--line)}
 
-/* ── SCROLLBAR ────────────────────────────────────── */
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px}
-::-webkit-scrollbar-thumb:hover{background:var(--b2)}
+footer{border-top:1px solid var(--line);margin-top:48px;padding:22px 0 40px;color:var(--ink-3);font-size:13px}
+footer .wrap{display:flex;justify-content:space-between;gap:12px 24px;flex-wrap:wrap}
+footer a{color:var(--ink-2)}
+footer .mono{font-family:var(--mono);font-size:12px}
 
-/* ── INTRO BAR ────────────────────────────────────── */
-.intro-bar{
-  padding:11px 28px;border-bottom:1px solid var(--b1);background:var(--s1);
-  display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px;
-}
-.intro-title{font-weight:700;color:var(--t1);white-space:nowrap}
-.intro-sep{color:var(--t4)}
-.intro-body{color:var(--t3);flex:1;min-width:200px}
-.intro-link{color:var(--gr);text-decoration:none;white-space:nowrap;font-size:12px;font-weight:600;margin-left:auto}
-.intro-link:hover{text-decoration:underline}
-
-/* ── HOW IT WORKS ─────────────────────────────────── */
-.how{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px}
-.how-step{
-  background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);
-  padding:18px 20px;display:flex;flex-direction:column;gap:8px;
-}
-.how-num{
-  width:24px;height:24px;border-radius:6px;background:var(--s3);
-  display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:800;color:var(--t3);font-family:var(--mono);flex-shrink:0;
-}
-.how-title{font-size:13px;font-weight:600;color:var(--t1)}
-.how-desc{font-size:12px;color:var(--t4);line-height:1.55}
-
-/* ── FOOTER ───────────────────────────────────────── */
-.footer{
-  text-align:center;padding:32px 0;margin-top:48px;
-  border-top:1px solid var(--b1);font-size:12px;color:var(--t4);
-  display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;
-}
-.footer a{color:var(--t4);text-decoration:none;transition:color .15s}
-.footer a:hover{color:var(--t2)}
-
-/* ── RESPONSIVE ───────────────────────────────────── */
-@media(max-width:900px){
+@media (max-width:980px){
   .grid{grid-template-columns:1fr}
-  .hero{grid-template-columns:1fr}
-  .hero-cell:first-child{border-right:none;border-bottom:1px solid var(--b1)}
-  .tiers{grid-template-columns:1fr}
-  .stats{grid-template-columns:repeat(2,1fr)}
-  .how{grid-template-columns:1fr}
+  .readouts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ro:nth-child(3){border-left:0}
+  .ro:nth-child(n+3){border-top:1px solid var(--line)}
+  .lanes{grid-template-columns:1fr}
 }
-@media(max-width:560px){
-  .wrap{padding:20px 14px 40px}
-  nav{padding:0 14px}
-  .stats{grid-template-columns:1fr}
-  .hero-num{font-size:52px}
-  .hero-num-b{font-size:40px}
+@media (max-width:640px){
+  .wrap{padding:0 16px}
+  .top{height:52px}
+  .brand span,nav .hide-sm{display:none}
+  nav{gap:0;font-size:12px}
+  nav a{padding:6px 5px}
+  .ro{padding:12px 14px}
+  .ro dd{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
 }
 </style>
 </head>
 <body>
-
-<!-- NAV -->
-<nav>
-  <div class="logo">
-    <div class="logo-mark">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-    </div>
-    Smart Router
+<header>
+  <div class="wrap top">
+    <a class="brand" href="/" aria-label="Smart Router playground">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="4" cy="11" r="2.6" fill="#e6edf3"/><path d="M6.5 11 H10 M10 11 L17 4 M10 11 H17 M10 11 L17 18" stroke="#8593a1" stroke-width="1.6" fill="none"/><circle cx="18" cy="4" r="2" fill="#4ade80"/><circle cx="18" cy="11" r="2" fill="#fbbf24"/><circle cx="18" cy="18" r="2" fill="#b69cff"/></svg>
+      smart-router <span>/ dashboard</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="/">playground</a>
+      <a class="hide-sm" href="/docs">api docs</a>
+      <a href="https://github.com/Nityaa08/smart-router">github</a>
+      <a href="https://nityashree.in">portfolio</a>
+    </nav>
   </div>
-  <div class="nav-r">
-    <div class="pill">
-      <div class="dot" id="dot"></div>
-      <span id="st">connecting</span>
-    </div>
-    <span class="tag tag-bl" id="prov-tag">—</span>
-    <a class="nav-a" href="/docs" target="_blank">API docs ↗</a>
-  </div>
-</nav>
+</header>
 
-<div class="intro-bar">
-  <span class="intro-title">AI Cost Control Gateway</span>
-  <span class="intro-sep">—</span>
-  <span class="intro-body">Every prompt gets classified in &lt;1ms and routed to the cheapest model that can handle it. Drop-in OpenAI-compatible API. No code changes needed.</span>
-  <a href="/docs" class="intro-link" target="_blank">View API docs ↗</a>
-</div>
+<main class="wrap">
+  <section class="intro" aria-labelledby="title">
+    <div>
+      <h1 id="title">Traffic and cost, by tier</h1>
+      <p class="lede">Every request the gateway has logged (Postgres, or this process's memory in demo mode), with its estimated cost against GPT-4o list prices.</p>
+    </div>
+    <div class="chips" aria-live="polite">
+      <span class="chip" id="health"><i aria-hidden="true"></i><span id="st">connecting</span></span>
+      <span class="chip" id="prov-tag">provider: …</span>
+    </div>
+  </section>
 
-<div class="wrap">
+  <div class="sec"><h2>Totals</h2><span id="updated"></span></div>
+  <dl class="readouts">
+    <div class="ro"><dt>est. saving vs gpt-4o</dt><dd class="save" id="h-pct">-</dd><small id="h-pct-sub">send prompts to see it</small></div>
+    <div class="ro"><dt>est. saved</dt><dd id="h-saved">-</dd><small id="h-saved-sub">at list prices</small></div>
+    <div class="ro"><dt>requests</dt><dd id="s-tot">-</dd><small id="s-cache">- from cache</small></div>
+    <div class="ro"><dt>avg latency</dt><dd id="s-lat">-</dd><small>est. cost <span id="s-cost">-</span></small></div>
+  </dl>
 
-  <!-- HERO -->
-  <div class="sec">Cost savings</div>
-  <div class="hero">
-    <div class="hero-cell">
-      <div class="hero-eyebrow">Savings rate vs GPT-4o</div>
-      <div class="hero-num" id="h-pct">—</div>
-      <div class="hero-desc" id="h-pct-sub">Start sending prompts to see savings</div>
+  <div class="sec"><h2>Lanes</h2><span id="dist-tot">0 requests</span></div>
+  <div class="lanes">
+    <div class="lane" data-tier="simple">
+      <div class="hd"><b>simple</b><em>score 0-1</em></div>
+      <div class="model" id="m-s">-</div>
+      <div class="desc">Factual Q&amp;A, definitions, quick lookups</div>
+      <div class="price" id="p-s"></div>
+      <div class="bar"><i id="bf-s"></i></div>
+      <div class="ft"><span id="tf-sc">0 requests</span><b id="tf-sp">0%</b></div>
     </div>
-    <div class="hero-cell">
-      <div class="hero-eyebrow">Total saved (hypothetical)</div>
-      <div class="hero-num hero-num-b" id="h-saved">—</div>
-      <div class="hero-desc" id="h-saved-sub">vs GPT-4o reference pricing</div>
+    <div class="lane" data-tier="medium">
+      <div class="hd"><b>medium</b><em>score 2-3</em></div>
+      <div class="model" id="m-m">-</div>
+      <div class="desc">Explanations, comparisons, writing</div>
+      <div class="price" id="p-m"></div>
+      <div class="bar"><i id="bf-m"></i></div>
+      <div class="ft"><span id="tf-mc">0 requests</span><b id="tf-mp">0%</b></div>
     </div>
-  </div>
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-ey">Total Requests</div>
-      <div class="stat-v v-bl" id="s-tot">—</div>
-      <div class="stat-s" id="s-cache">— from cache</div>
-    </div>
-    <div class="stat">
-      <div class="stat-ey">Avg Latency</div>
-      <div class="stat-v v-am" id="s-lat">—</div>
-      <div class="stat-s">across all tiers</div>
-    </div>
-    <div class="stat">
-      <div class="stat-ey">Actual Cost</div>
-      <div class="stat-v v-mu" id="s-cost">—</div>
-      <div class="stat-s">open-source model pricing</div>
-    </div>
-  </div>
-
-  <!-- HOW IT WORKS -->
-  <div class="sec">How it works</div>
-  <div class="how">
-    <div class="how-step">
-      <div class="how-num">01</div>
-      <div class="how-title">Your app sends a prompt</div>
-      <div class="how-desc">POST to <code style="font-family:var(--mono);color:var(--t2);font-size:11px">/v1/chat/completions</code> — same format as the OpenAI API. No SDK changes needed.</div>
-    </div>
-    <div class="how-step">
-      <div class="how-num">02</div>
-      <div class="how-title">Classifier scores it instantly</div>
-      <div class="how-desc">Zero-cost heuristics analyze token count, keywords, and code patterns in &lt;1ms to assign a complexity tier: simple, medium, or complex.</div>
-    </div>
-    <div class="how-step">
-      <div class="how-num">03</div>
-      <div class="how-title">Cheapest capable model answers</div>
-      <div class="how-desc">Simple queries go to a 1B model. Only genuinely hard prompts reach the expensive one. Every request is logged with cost saved vs GPT-4o.</div>
+    <div class="lane" data-tier="complex">
+      <div class="hd"><b>complex</b><em>score 4+</em></div>
+      <div class="model" id="m-c">-</div>
+      <div class="desc">Code, algorithms, multi-step reasoning</div>
+      <div class="price" id="p-c"></div>
+      <div class="bar"><i id="bf-c"></i></div>
+      <div class="ft"><span id="tf-cc">0 requests</span><b id="tf-cp">0%</b></div>
     </div>
   </div>
 
-  <!-- TIER CARDS -->
-  <div class="sec">Routing tiers</div>
-  <div class="tiers">
-    <div class="tc tc-s">
-      <div class="tc-badge">Simple</div>
-      <div class="tc-model" id="m-s">llama3.2:1b</div>
-      <div class="tc-desc">Factual Q&amp;A, definitions, translations, quick lookups</div>
-      <div class="tc-price">~$0.01 / 1M tokens</div>
-      <div class="bar-t"><div class="bar-f" id="bf-s" style="width:0%"></div></div>
-      <div class="tc-foot"><span id="tf-sc">0 requests</span><span id="tf-sp">0%</span></div>
-    </div>
-    <div class="tc tc-m">
-      <div class="tc-badge">Medium</div>
-      <div class="tc-model" id="m-m">llama3.1:8b</div>
-      <div class="tc-desc">Explanations, comparisons, writing, basic code</div>
-      <div class="tc-price">~$0.05 / 1M tokens</div>
-      <div class="bar-t"><div class="bar-f" id="bf-m" style="width:0%"></div></div>
-      <div class="tc-foot"><span id="tf-mc">0 requests</span><span id="tf-mp">0%</span></div>
-    </div>
-    <div class="tc tc-c">
-      <div class="tc-badge">Complex</div>
-      <div class="tc-model" id="m-c">llama3.1:8b</div>
-      <div class="tc-desc">Algorithms, system design, multi-step reasoning, debugging</div>
-      <div class="tc-price">~$0.59 / 1M tokens</div>
-      <div class="bar-t"><div class="bar-f" id="bf-c" style="width:0%"></div></div>
-      <div class="tc-foot"><span id="tf-cc">0 requests</span><span id="tf-cp">0%</span></div>
-    </div>
-  </div>
-
-  <!-- MAIN GRID -->
-  <div class="sec" style="margin-top:4px">Live playground</div>
+  <div class="sec"><h2>Console</h2><span>requests sent here are logged like any other</span></div>
   <div class="grid">
-
-    <!-- CHAT -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-hd-t">Try the router</span>
-        <span class="card-hd-s">Routes automatically to cheapest capable model</span>
+    <section class="panel" aria-label="Chat console">
+      <div class="ph"><h3>Chat</h3><span>POST /v1/chat/completions</span></div>
+      <div class="frow" role="group" aria-label="Force tier">
+        <span class="flbl">tier:</span>
+        <button class="fb" type="button" data-t="" aria-pressed="true">auto</button>
+        <button class="fb" type="button" data-t="simple" aria-pressed="false">simple</button>
+        <button class="fb" type="button" data-t="medium" aria-pressed="false">medium</button>
+        <button class="fb" type="button" data-t="complex" aria-pressed="false">complex</button>
       </div>
-      <div class="frow">
-        <span class="flbl">Force tier:</span>
-        <button class="fb a-a" onclick="setTier(null,this)">auto</button>
-        <button class="fb" onclick="setTier('simple',this)">simple</button>
-        <button class="fb" onclick="setTier('medium',this)">medium</button>
-        <button class="fb" onclick="setTier('complex',this)">complex</button>
-      </div>
-      <div class="msgs" id="msgs">
-        <div class="empty-state" id="es">
-          <div class="empty-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" color="#52525b">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-            </svg>
-          </div>
-          <div class="empty-title">Ask anything</div>
-          <div class="empty-sub">The classifier reads your prompt and routes it to the cheapest model that can handle it.</div>
+      <div class="msgs" id="msgs" aria-live="polite">
+        <div class="empty" id="es">
+          <p>Each message is scored by the rules and sent to the matching lane. Try one:</p>
           <div class="examples">
-            <button class="ex-btn" onclick="tryEx(this)">
-              <span>"What is the capital of France?"</span>
-              <span class="chip ch-s">simple</span>
-            </button>
-            <button class="ex-btn" onclick="tryEx(this)">
-              <span>"Explain how neural networks learn"</span>
-              <span class="chip ch-m">medium</span>
-            </button>
-            <button class="ex-btn" onclick="tryEx(this)">
-              <span>"Implement quicksort with complexity analysis and tests"</span>
-              <span class="chip ch-c">complex</span>
-            </button>
+            <button class="ex" type="button" data-q="What is the capital of France?"><span>What is the capital of France?</span><span class="tg simple">simple</span></button>
+            <button class="ex" type="button" data-q="Explain how neural networks learn, and compare it with how decision trees learn."><span>Explain how neural networks learn, and compare it with decision trees</span><span class="tg medium">medium</span></button>
+            <button class="ex" type="button" data-q="Implement quicksort in Python. First write it, then analyze its complexity, then add tests."><span>Implement quicksort, analyze its complexity, add tests</span><span class="tg complex">complex</span></button>
           </div>
         </div>
       </div>
-      <div class="inp-row">
-        <textarea id="inp" rows="1" placeholder="Ask anything — watch the routing happen…" onkeydown="onKey(event)" oninput="rsz(this)"></textarea>
-        <button class="sbtn" id="sbtn" onclick="send()">Send →</button>
+      <div class="inp">
+        <label for="inp">Message</label>
+        <textarea id="inp" rows="1" placeholder="Type a prompt. Enter sends, Shift+Enter adds a line."></textarea>
+        <button class="sbtn" id="sbtn" type="button">Send</button>
       </div>
-    </div>
+    </section>
 
-    <!-- RIGHT -->
-    <div class="rcol">
-      <div class="card">
-        <div class="card-hd">
-          <span class="card-hd-t">Distribution</span>
-          <span class="card-hd-s" id="dist-tot">0 requests</span>
-        </div>
-        <div style="padding:18px">
-          <div class="dist">
-            <div class="dr">
-              <span class="dl" style="color:var(--gr)">simple</span>
-              <div class="dt"><div class="df df-s" id="df-s" style="width:0%"></div></div>
-              <span class="dn" id="dn-s">0</span>
-              <span class="dp" style="color:var(--gr)" id="dp-s">0%</span>
-            </div>
-            <div class="dr">
-              <span class="dl" style="color:var(--am)">medium</span>
-              <div class="dt"><div class="df df-m" id="df-m" style="width:0%"></div></div>
-              <span class="dn" id="dn-m">0</span>
-              <span class="dp" style="color:var(--am)" id="dp-m">0%</span>
-            </div>
-            <div class="dr">
-              <span class="dl" style="color:var(--rd)">complex</span>
-              <div class="dt"><div class="df df-c" id="df-c" style="width:0%"></div></div>
-              <span class="dn" id="dn-c">0</span>
-              <span class="dp" style="color:var(--rd)" id="dp-c">0%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-hd">
-          <span class="card-hd-t">Session log</span>
-          <span class="card-hd-s">this session</span>
-        </div>
-        <div style="padding:8px 18px">
-          <div class="loglist" id="log"><div class="nodata">No requests yet</div></div>
-        </div>
-      </div>
-    </div>
-
+    <section class="panel" aria-label="Session log">
+      <div class="ph"><h3>Session log</h3><span>this browser tab</span></div>
+      <div class="loglist" id="log"><div class="nodata">No requests yet</div></div>
+      <p class="note">Costs use list prices and, in demo mode, estimated token counts. They show the pricing logic, not measured savings.</p>
+    </section>
   </div>
-</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Built by <a href="https://nityashree.in">Nityashree S</a> · <a href="https://github.com/Nityaa08/smart-router">source on GitHub</a></span>
+    <span class="mono"><a href="/">/</a> · <a href="/health">/health</a> · <a href="/analytics">/analytics</a> · <a href="/docs">/docs</a></span>
+  </div>
+</footer>
 
 <script>
 // If the server sets ROUTER_API_KEY, ask for it once and keep it in this browser.
@@ -516,30 +285,26 @@ async function apiFetch(url,opts={},retry=true){
   }
   return r;
 }
+const $=id=>document.getElementById(id);
+const COLOR={simple:'var(--simple)',medium:'var(--medium)',complex:'var(--complex)'};
 let ft=null,slog=[];
 
-function setTier(t,btn){
-  ft=t;
-  document.querySelectorAll('.fb').forEach(b=>b.className='fb');
-  btn.className=t?`fb a-${t[0]}`:'fb a-a';
-}
-
-function rsz(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'}
-function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}
-
-function tryEx(btn){
-  const txt=btn.querySelector('span:first-child').textContent.replace(/[""]/g,'');
-  document.getElementById('inp').value=txt;
-  send();
-}
+document.querySelectorAll('.fb').forEach(b=>b.addEventListener('click',()=>{
+  ft=b.dataset.t||null;
+  document.querySelectorAll('.fb').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));
+}));
+document.querySelectorAll('.ex').forEach(b=>b.addEventListener('click',()=>{$('inp').value=b.dataset.q;send();}));
+$('inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+$('inp').addEventListener('input',e=>{const el=e.target;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'});
+$('sbtn').addEventListener('click',()=>send());
 
 async function send(){
-  const inp=document.getElementById('inp');
+  const inp=$('inp');
   const txt=inp.value.trim();
-  if(!txt)return;
-  const btn=document.getElementById('sbtn');
+  if(!txt){inp.focus();return;}
+  const btn=$('sbtn');
   btn.disabled=true;inp.value='';inp.style.height='auto';
-  document.getElementById('es')?.remove();
+  $('es')?.remove();
   addU(txt);
   const tid=addThink();
   try{
@@ -548,29 +313,31 @@ async function send(){
       body:JSON.stringify({messages:[{role:'user',content:txt}],force_tier:ft})
     });
     if(!r.ok){
-      const txt2=await r.text();
+      const t2=await r.text();
       let msg=`HTTP ${r.status}`;
-      try{const j=JSON.parse(txt2);msg=j.error?.message??j.detail??msg;}catch{}
+      try{const j=JSON.parse(t2);msg=`HTTP ${r.status}: `+(j.error?.message??j.detail??'request failed');}catch{}
       throw new Error(msg);
     }
     const d=await r.json();
     rm(tid);
     const c=d.choices?.[0]?.message?.content??'[no response]';
     const rv=d.router??{};
-    addBot(c,rv.tier??'?',rv.model??d.model??'?',rv.cost_saved_usd??0,rv.latency_ms??0,rv.from_cache??false);
-    slog.unshift({txt:txt.slice(0,40),tier:rv.tier??'?',saved:rv.cost_saved_usd??0,lat:rv.latency_ms??0});
+    addBot(c,rv.tier??'?',rv.model??d.model??'?',rv.cost_saved_usd??0,rv.latency_ms??0,rv.from_cache??false,r.headers.get('x-router-fallback')==='true');
+    slog.unshift({txt:txt.slice(0,40),full:txt.length>40,tier:rv.tier??'?',saved:rv.cost_saved_usd??0,lat:rv.latency_ms??0});
     if(slog.length>15)slog.pop();
     renderLog();loadA();
   }catch(e){rm(tid);addErr(e.message);}
   btn.disabled=false;inp.focus();
 }
 
-function M(){return document.getElementById('msgs')}
+function M(){return $('msgs')}
 function sc(){const m=M();m.scrollTop=m.scrollHeight}
-function rm(id){document.getElementById(id)?.remove()}
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
-function fms(ms){return ms>=1000?`${(ms/1000).toFixed(1)}s`:`${ms}ms`}
-function fusd(v){if(!v||v===0)return'$0.00';if(v<0.0001)return`$${v.toExponential(2)}`;return`$${v.toFixed(4)}`}
+function rm(id){$(id)?.remove()}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c])}
+function fms(ms){return ms>=1000?`${(ms/1000).toFixed(1)}s`:`${ms} ms`}
+function fusd(v){if(!v)return'$0.00';if(v<0.0001)return`$${v.toExponential(2)}`;return`$${v.toFixed(4)}`}
+function price(v){return '$'+(v>0&&v<0.1?v.toFixed(3):v.toFixed(2))}
+const tcls=t=>['simple','medium','complex'].includes(t)?t:'n';
 
 function addU(txt){
   const el=document.createElement('div');el.className='msg';
@@ -579,44 +346,38 @@ function addU(txt){
 }
 function addErr(msg){
   const el=document.createElement('div');el.className='msg mb';
-  el.innerHTML=`<div style="padding:10px 14px;background:var(--rdd);border:1px solid var(--rdb);border-radius:3px 14px 14px 14px;font-size:13px;color:var(--rd)">${esc(msg)}</div>`;
+  el.innerHTML=`<div class="errm" role="alert">${esc(msg)}</div>`;
   M().appendChild(el);sc();
 }
 function addThink(){
   const id='t'+Date.now(),el=document.createElement('div');
   el.id=id;el.className='msg mb';
-  el.innerHTML=`<div class="think"><div class="td"></div><div class="td"></div><div class="td"></div></div>`;
+  el.innerHTML=`<div class="think">scoring and routing</div>`;
   M().appendChild(el);sc();return id;
 }
-function addBot(c,tier,model,saved,lat,cached){
+function addBot(c,tier,model,saved,lat,cached,fellBack){
   const el=document.createElement('div');el.className='msg';
   el.innerHTML=`
   <div class="mb">
-    <div class="rpill">
-      <span class="rn rn-d">prompt</span><span class="ra">→</span>
-      <span class="rn rn-d">classify</span><span class="ra">→</span>
-      <span class="rn rn-${tier}">${tier}</span><span class="ra">→</span>
-      <span class="rn rn-d">${esc(model)}</span>
-    </div>
-    <div class="bb">${esc(c)}</div>
+    <div class="path">prompt → rules → <span class="tg ${tcls(tier)}">${esc(tier)}</span> → ${esc(model)}</div>
+    <div class="bb" style="--tc:${COLOR[tier]||'var(--line-2)'}">${esc(c)}</div>
     <div class="meta">
-      <span class="chip ch-${tier[0]}">${tier}</span>
-      <span class="chip ch-n">${esc(model)}</span>
-      <span class="chip ch-n">${fms(lat)}</span>
-      <span class="chip ch-sv">↓ ${fusd(saved)} saved</span>
-      ${cached?'<span class="chip ch-ca">⚡ cached</span>':''}
+      <span class="tg n">${fms(lat)}</span>
+      <span class="tg sv">${fusd(saved)} saved (est.)</span>
+      ${cached?'<span class="tg ca">cached</span>':''}
+      ${fellBack?'<span class="tg" style="color:var(--bad);border-color:rgba(255,123,114,.45)">fallback</span>':''}
     </div>
   </div>`;
   M().appendChild(el);sc();
 }
 
 function renderLog(){
-  const el=document.getElementById('log');
+  const el=$('log');
   if(!slog.length){el.innerHTML='<div class="nodata">No requests yet</div>';return;}
   el.innerHTML=slog.map(r=>`
     <div class="logrow">
-      <span class="chip ch-${r.tier[0]}" style="font-size:10px">${r.tier[0].toUpperCase()}</span>
-      <span class="logp">${esc(r.txt)}${r.txt.length>=40?'…':''}</span>
+      <span class="tg ${tcls(r.tier)}">${esc(r.tier[0].toUpperCase())}</span>
+      <span class="logp" title="${esc(r.txt)}">${esc(r.txt)}${r.full?'…':''}</span>
       <span class="logl">${fms(r.lat)}</span>
       <span class="logs">+${fusd(r.saved)}</span>
     </div>`).join('');
@@ -627,49 +388,54 @@ async function loadA(){
     const d=await apiFetch('/analytics').then(r=>r.json());
     const tot=d.total_requests||0;
     const pct=d.savings_pct??0;
-    document.getElementById('h-pct').textContent=pct>=1?`${pct.toFixed(1)}%`:'—';
-    document.getElementById('h-pct-sub').textContent=`of GPT-4o spend eliminated · ${tot.toLocaleString()} requests`;
-    document.getElementById('h-saved').textContent=fusd(d.total_saved_usd??0);
-    document.getElementById('h-saved-sub').textContent=`baseline $${(d.baseline_cost_usd??0).toFixed(4)} · actual $${(d.actual_cost_usd??0).toFixed(6)}`;
-    document.getElementById('s-tot').textContent=tot.toLocaleString();
-    document.getElementById('s-cache').textContent=`${d.cache_hits??0} from cache`;
-    document.getElementById('s-lat').textContent=`${Math.round(d.avg_latency_ms??0)}ms`;
-    document.getElementById('s-cost').textContent=fusd(d.actual_cost_usd??0);
+    $('h-pct').textContent=tot?`${pct.toFixed(1)}%`:'-';
+    $('h-pct-sub').textContent=tot?`of the GPT-4o estimate, over ${tot.toLocaleString()} requests`:'send prompts to see it';
+    $('h-saved').textContent=fusd(d.total_saved_usd??0);
+    $('h-saved-sub').textContent=`gpt-4o $${(d.baseline_cost_usd??0).toFixed(4)} · actual $${(d.actual_cost_usd??0).toFixed(6)}`;
+    $('s-tot').textContent=tot.toLocaleString();
+    $('s-cache').textContent=`${d.cache_hits??0} from cache`;
+    $('s-lat').textContent=`${Math.round(d.avg_latency_ms??0)} ms`;
+    $('s-cost').textContent=fusd(d.actual_cost_usd??0);
     const dn=tot||1;
     [['simple','s'],['medium','m'],['complex','c']].forEach(([t,k])=>{
       const cnt=d.by_tier?.[t]?.count??0;
       const p=Math.round((cnt/dn)*100);
-      document.getElementById(`bf-${k}`).style.width=`${p}%`;
-      document.getElementById(`tf-${k}c`).textContent=`${cnt} req${cnt!==1?'s':''}`;
-      document.getElementById(`tf-${k}p`).textContent=`${p}%`;
-      document.getElementById(`df-${k}`).style.width=`${p}%`;
-      document.getElementById(`dn-${k}`).textContent=cnt;
-      document.getElementById(`dp-${k}`).textContent=`${p}%`;
+      $(`bf-${k}`).style.width=`${p}%`;
+      $(`tf-${k}c`).textContent=`${cnt} request${cnt!==1?'s':''}`;
+      $(`tf-${k}p`).textContent=`${p}%`;
     });
-    document.getElementById('dist-tot').textContent=`${tot.toLocaleString()} requests`;
+    $('dist-tot').textContent=`${tot.toLocaleString()} requests`;
+    $('updated').textContent='updated '+new Date().toLocaleTimeString();
+  }catch{}
+}
+
+async function loadModels(){
+  // The tier models and their list prices come from the explain endpoint (no model call).
+  try{
+    const r=await apiFetch('/v1/route/explain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'hi'}]})});
+    if(!r.ok)return;
+    const x=await r.json();
+    for(const t of x.tiers){
+      const k=t.tier[0];
+      $(`m-${k}`).textContent=t.model;$(`m-${k}`).title=t.model;
+      const p=t.price_per_1m_tokens_usd;
+      if(p)$(`p-${k}`).textContent=`${price(p.input)} / ${price(p.output)} per 1M tokens in / out`;
+    }
   }catch{}
 }
 
 async function checkH(){
+  const chip=$('health'),st=$('st'),tag=$('prov-tag');
   try{
     const d=await fetch('/health').then(r=>r.json());
-    const dot=document.getElementById('dot'),st=document.getElementById('st'),tag=document.getElementById('prov-tag');
-    dot.className=d.status==='ok'?'dot on':'dot';
-    st.textContent=d.status==='ok'?'live':d.db==='up'?'provider down':'db down';
-    if(d.provider_name)tag.textContent=d.provider_name;
-  }catch{document.getElementById('dot').className='dot';document.getElementById('st').textContent='offline'}
+    chip.className=d.status==='ok'?'chip ok':'chip bad';
+    st.textContent=d.status==='ok'?'healthy':(String(d.provider).startsWith('up')?'db down':'provider down');
+    if(d.provider_name)tag.textContent=`provider: ${d.provider_name}${d.provider_name==='demo'?' (simulated)':''}`;
+  }catch{chip.className='chip bad';st.textContent='offline'}
 }
 
-checkH();loadA();
+checkH();loadA();loadModels();
 setInterval(loadA,8e3);setInterval(checkH,20e3);
 </script>
-
-<footer class="footer">
-  <span>Smart Router — AI Cost Control Gateway</span>
-  <a href="/docs" target="_blank">API Reference</a>
-  <a href="https://github.com/nityashrees/smart-router" target="_blank">GitHub ↗</a>
-  <span style="margin-left:auto;color:var(--t4)">Routes prompts · Cuts LLM costs · Open source</span>
-</footer>
-
 </body>
 </html>

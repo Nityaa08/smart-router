@@ -5,255 +5,461 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smart Router</title>
 <meta name="description" content="An OpenAI-compatible LLM gateway that routes each prompt to a model tier with transparent rules and estimates its cost. A demo by Nityashree S.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0e13">
 <style>
 :root{
-  --bg:#f5f5f2; --surface:#ffffff; --ink:#0b0b0c; --ink-2:#4a4a48; --ink-3:#7a7a76;
-  --line:#e2e2dc; --line-2:#cfcfc8; --chip:#ecece7; --warn:#8a4b0f; --warn-bg:#f6ecdf;
-  --ok:#24563f; --ok-bg:#e3eee7;
-  --t-simple:#d9d9d2; --t-medium:#8d8d86; --t-complex:#0b0b0c;
-  --font:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-}
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#0b0b0c; --surface:#151516; --ink:#f5f5f2; --ink-2:#c3c3bd; --ink-3:#8b8b85;
-    --line:#26262a; --line-2:#36363b; --chip:#1e1e21; --warn:#f0b878; --warn-bg:#2a2117;
-    --ok:#9fd3b6; --ok-bg:#16241d;
-    --t-simple:#3a3a36; --t-medium:#8d8d86; --t-complex:#f5f5f2;
-  }
+  --bg:#0a0e13; --panel:#10161d; --panel-2:#141b24; --well:#0c1117;
+  --line:#1f2832; --line-2:#2c3743;
+  --ink:#e6edf3; --ink-2:#a9b4bf; --ink-3:#8593a1;
+  --simple:#4ade80; --medium:#fbbf24; --complex:#b69cff; --bad:#ff7b72; --info:#7cc7ff;
+  --simple-bg:rgba(74,222,128,.08); --medium-bg:rgba(251,191,36,.08); --complex-bg:rgba(182,156,255,.09); --bad-bg:rgba(255,123,114,.08); --info-bg:rgba(124,199,255,.08);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --r:12px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
-body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+html{-webkit-text-size-adjust:100%;color-scheme:dark}
+body{
+  background-color:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(rgba(148,163,184,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(148,163,184,.045) 1px,transparent 1px);
+  background-size:32px 32px;background-position:-1px -1px;
+}
 a{color:inherit;text-underline-offset:3px}
-code{font-family:var(--mono);font-size:.9em}
-.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
-header{border-bottom:1px solid var(--line)}
-.top{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px}
-.brand{font-weight:700;letter-spacing:-.01em;white-space:nowrap}
-.brand span{color:var(--ink-3);font-weight:500}
-nav{display:flex;gap:18px;font-size:14px;color:var(--ink-2);white-space:nowrap}
-nav a{text-decoration:none}
-nav a:hover{color:var(--ink);text-decoration:underline}
-.hero{padding:44px 0 22px}
-.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-h1{font-size:clamp(28px,4.4vw,44px);line-height:1.08;letter-spacing:-.025em;font-weight:700;margin:10px 0 12px;max-width:780px}
-.lede{color:var(--ink-2);max-width:700px;font-size:16px}
-.mode{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 20px}
-.mode.demo{background:var(--warn-bg);color:var(--warn)}
-.mode.live{background:var(--ok-bg);color:var(--ok)}
-.mode b{white-space:nowrap}
-.grid{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:20px;align-items:start}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
-.card h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
-label{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin:14px 0 6px}
-textarea,select{width:100%;font:inherit;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line-2);border-radius:9px;padding:10px 12px;outline:none}
-textarea{min-height:150px;resize:vertical;line-height:1.5}
-select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
-textarea:focus,select:focus{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 12%,transparent)}
-.count{font-size:12px;color:var(--ink-3);text-align:right;margin-top:4px;font-variant-numeric:tabular-nums}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chips button{font:inherit;font-size:12.5px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink-2);padding:6px 10px;border-radius:999px;cursor:pointer;text-align:left}
-.chips button:hover{border-color:var(--ink)}
-.btn{margin-top:18px;width:100%;font:inherit;font-weight:600;font-size:15px;background:var(--ink);color:var(--bg);border:0;border-radius:10px;padding:12px 14px;cursor:pointer}
-.btn:disabled{opacity:.55;cursor:wait}
-.empty{color:var(--ink-3);padding:48px 0;text-align:center}
-.tierline{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.tier{font-size:clamp(30px,5vw,44px);font-weight:700;letter-spacing:-.03em;line-height:1}
-.model{font-family:var(--mono);font-size:13px;color:var(--ink-2);background:var(--chip);padding:3px 8px;border-radius:6px}
-.fb{font-size:12px;color:var(--warn);background:var(--warn-bg);padding:3px 8px;border-radius:6px}
-.meter{position:relative;height:10px;border-radius:5px;margin:22px 0 6px;display:grid;grid-template-columns:2fr 2fr 4fr;gap:3px}
-.meter span{border-radius:3px}
-.meter .needle{position:absolute;top:-6px;width:3px;height:22px;background:var(--ink);border-radius:2px;transition:left .35s ease;box-shadow:0 0 0 2px var(--surface)}
-.scale{display:grid;grid-template-columns:2fr 2fr 4fr;gap:3px;font-size:11px;color:var(--ink-3);white-space:nowrap}
-.signals{list-style:none;margin-top:18px;border-top:1px solid var(--line)}
-.signals li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
-.signals li small{display:block;color:var(--ink-3);font-size:12px}
-.signals li b{font-variant-numeric:tabular-nums;white-space:nowrap}
-.signals li.total{border-bottom:0;font-weight:700}
-.answer{margin-top:18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14px;white-space:pre-wrap;color:var(--ink-2)}
-.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
-.kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.kpi .k{font-size:11.5px;color:var(--ink-3)}
-.kpi .v{font-weight:700;font-size:17px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.err{background:var(--warn-bg);color:var(--warn);border-radius:9px;padding:12px 14px;font-size:14px}
-.stats{margin-top:20px}
-.stats .bars{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--chip);margin:10px 0 8px}
-.stats .bars div{height:100%}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2)}
-.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line-2)}
-.section{padding:44px 0 8px}
-.section h3{font-size:22px;letter-spacing:-.015em;margin-bottom:6px}
-.diagram{margin-top:18px;overflow-x:auto}
+code,.mono{font-family:var(--mono)}
+code{font-size:.88em;color:var(--ink)}
+:focus-visible{outline:2px solid var(--info);outline-offset:2px;border-radius:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+
+/* ── top bar ── */
+html{scroll-padding-top:64px}
+header{border-bottom:1px solid var(--line);background:rgba(10,14,19,.86);backdrop-filter:blur(8px);position:sticky;top:0;z-index:5}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;height:56px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:14px;font-weight:600;white-space:nowrap;text-decoration:none}
+.brand svg{flex:none}
+.brand span{color:var(--ink-3);font-weight:400}
+nav{display:flex;gap:4px;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+nav a{text-decoration:none;color:var(--ink-2);padding:6px 9px;border-radius:6px}
+nav a:hover{color:var(--ink);background:var(--panel-2)}
+
+/* ── intro strip ── */
+.intro{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:24px 0 18px;flex-wrap:wrap}
+h1{font-size:clamp(22px,2.6vw,30px);font-weight:650;letter-spacing:-.02em;line-height:1.15}
+.lede{color:var(--ink-2);max-width:640px;margin-top:6px;font-size:15px}
+.readouts{display:flex;gap:0;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-family:var(--mono);font-size:12px;overflow:hidden}
+.readouts div{padding:8px 14px;border-left:1px solid var(--line)}
+.readouts div:first-child{border-left:0}
+.readouts dt{color:var(--ink-3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+.readouts dd{color:var(--ink)}
+
+/* ── panels ── */
+.board{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:16px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 20px 40px -24px rgba(0,0,0,.6)}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.ph h2{font-size:inherit;font-weight:600;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.ph h2::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-3)}
+.pb{padding:16px}
+
+/* status chip */
+.chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+.chip i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip.demo{color:var(--info);border-color:rgba(124,199,255,.35);background:var(--info-bg)}
+.chip.live{color:var(--simple);border-color:rgba(74,222,128,.35);background:var(--simple-bg)}
+.chip.live i{box-shadow:0 0 0 3px rgba(74,222,128,.18)}
+.modeline{font-size:13px;color:var(--ink-2);padding:10px 16px;border-bottom:1px solid var(--line);background:var(--well)}
+.modeline b{color:var(--ink);font-weight:600}
+
+/* console */
+label,.lbl{display:block;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}
+.field{position:relative}
+textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--well);border:1px solid var(--line-2);border-radius:9px;outline:none}
+textarea{font-family:var(--mono);font-size:13.5px;line-height:1.6;min-height:168px;resize:vertical;padding:12px 12px 12px 30px}
+.field::before{content:">";position:absolute;left:12px;top:11px;font-family:var(--mono);font-size:13.5px;color:var(--simple);pointer-events:none}
+textarea:focus,select:focus{border-color:var(--info);box-shadow:0 0 0 3px rgba(124,199,255,.15)}
+textarea:focus-visible,select:focus-visible{outline:none}
+.count{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:6px;font-variant-numeric:tabular-nums}
+.count.near{color:var(--medium)}
+.row{margin-top:16px}
+.examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.examples button{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line-2);padding:8px 10px;border-radius:8px;cursor:pointer;text-align:left}
+.examples button:hover{color:var(--ink);border-color:#3c4957}
+.examples button i{width:8px;height:8px;border-radius:2px;flex:none}
+select{appearance:none;-webkit-appearance:none;font-family:var(--mono);font-size:13px;padding:10px 34px 10px 12px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+.go{margin-top:18px;width:100%;display:flex;align-items:center;justify-content:center;gap:10px;font:inherit;font-weight:650;font-size:15px;color:#06120a;background:var(--simple);border:0;border-radius:10px;padding:12px 14px;cursor:pointer}
+.go:hover{filter:brightness(1.08)}
+.go:disabled{opacity:.6;cursor:wait}
+.go kbd{font-family:var(--mono);font-size:11px;font-weight:500;border:1px solid rgba(6,18,10,.35);border-radius:4px;padding:1px 5px}
+
+/* switchboard */
+.lanes{position:relative;display:flex;flex-direction:column;gap:8px;padding-left:44px}
+.bus{position:absolute;left:12px;top:22px;bottom:22px;width:2px;background:var(--line-2);border-radius:2px}
+.src{position:absolute;left:4px;top:50%;transform:translateY(-50%);width:18px;height:18px;border-radius:50%;border:2px solid var(--line-2);background:var(--panel)}
+.lane{--c:var(--ink-3);position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--well);transition:border-color .25s,background .25s,box-shadow .25s}
+.lane[data-tier=simple]{--c:var(--simple);--cb:var(--simple-bg)}
+.lane[data-tier=medium]{--c:var(--medium);--cb:var(--medium-bg)}
+.lane[data-tier=complex]{--c:var(--complex);--cb:var(--complex-bg)}
+.lane::before{content:"";position:absolute;left:-32px;top:50%;width:32px;height:2px;background:var(--line-2);transition:background .25s}
+.lamp{width:12px;height:12px;border-radius:50%;border:2px solid var(--c);opacity:.55;transition:all .25s}
+.lane .name{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.lane .name em{font-style:normal;font-weight:400;color:var(--ink-3);font-size:11.5px}
+.lane .model{font-family:var(--mono);font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lane .price{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);text-align:right;white-space:nowrap}
+.lane .price b{display:block;color:var(--ink-2);font-weight:500;font-size:12.5px}
+.lane .tag{display:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:4px}
+.lane.on{border-color:var(--c);background:linear-gradient(90deg,var(--cb),transparent 70%),var(--well);box-shadow:0 0 0 1px var(--c) inset,0 0 24px -8px var(--c)}
+.lane.on::before{background:var(--c);box-shadow:0 0 8px var(--c)}
+.lane.on .lamp{background:var(--c);opacity:1;box-shadow:0 0 0 4px var(--cb),0 0 12px var(--c)}
+.lane.on .tag.routed{display:inline-block;color:#0a0e13;background:var(--c)}
+.lane.picked:not(.on){border-style:dashed;border-color:var(--c)}
+.lane.picked:not(.on) .tag.classified{display:inline-block;color:var(--c);border:1px solid var(--c)}
+.lane.failed{border-color:var(--bad);border-style:dashed}
+.lane.failed .tag.down{display:inline-block;color:var(--bad);border:1px solid var(--bad)}
+.lanes.pulse .lane.on::after{content:"";position:absolute;left:-32px;top:calc(50% - 3px);width:6px;height:6px;border-radius:50%;background:var(--c);animation:pulse .6s ease-out}
+@keyframes pulse{from{transform:translateX(0);opacity:1}to{transform:translateX(30px);opacity:0}}
+.state{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin:0 0 12px;min-height:1.5em}
+.state b{color:var(--ink);font-weight:600}
+.flag{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:4px;margin-left:6px;border:1px solid}
+.flag.forced{color:var(--info);border-color:rgba(124,199,255,.4)}
+.flag.fb{color:var(--bad);border-color:rgba(255,123,114,.45);background:var(--bad-bg)}
+
+/* gauge */
+.gauge{margin-top:20px}
+.gtop{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.gtop .score{font-size:12px;letter-spacing:0;text-transform:none;color:var(--ink-2)}
+.gtop .score b{font-size:20px;color:var(--ink);font-weight:600;margin-left:4px}
+.track{position:relative;height:14px;margin:12px 0 6px;border-radius:4px;overflow:visible;display:grid;grid-template-columns:2fr 2fr 6fr;gap:2px}
+.track span{border-radius:3px;opacity:.28}
+.track span:nth-child(1){background:var(--simple)}.track span:nth-child(2){background:var(--medium)}.track span:nth-child(3){background:var(--complex)}
+.track span.hit{opacity:.85}
+.needle{position:absolute;top:-6px;bottom:-6px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 2px var(--panel);transition:left .45s cubic-bezier(.3,.7,.3,1)}
+.zones{display:grid;grid-template-columns:2fr 2fr 6fr;gap:2px;font-family:var(--mono);font-size:10.5px;white-space:nowrap}
+.zones span{overflow:hidden;text-overflow:ellipsis}
+.zones span:last-child{display:flex;justify-content:space-between;overflow:visible}
+.zones em{font-style:normal;color:var(--ink-3)}
+.zones b{font-weight:400}
+
+/* rule log */
+.log{margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--well);font-family:var(--mono);font-size:12.5px;overflow:hidden}
+.log .lh{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+#rules{list-style:none;padding:6px 0}
+#rules li{display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px;padding:4px 12px;align-items:baseline}
+#rules li .pts{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+#rules li .pts.up{color:var(--medium)}
+#rules li .pts.down{color:var(--simple)}
+#rules li .nm{color:var(--ink)}
+#rules li .dt{display:block;color:var(--ink-3);font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+#rules li.total{border-top:1px dashed var(--line-2);margin-top:4px;padding-top:8px}
+#rules li.total .pts{color:var(--ink)}
+.anim #rules li{animation:in .3s both}
+@keyframes in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* lower half of the switchboard */
+.split2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,230px);gap:18px;margin-top:4px}
+.costcol{margin-top:20px;padding-left:18px;border-left:1px dashed var(--line-2)}
+.costcol .muted{margin-top:4px}
+/* cost + answer */
+.cost{margin-top:6px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center;font-family:var(--mono);font-size:12px}
+.cost .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.cost .bar i{display:block;height:100%;border-radius:4px;transition:width .5s ease}
+.cost .k{color:var(--ink-3);display:flex;justify-content:space-between;gap:10px;grid-column:1/-1;margin-bottom:-4px}
+.cost .v{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums;min-width:86px}
+.kpis{display:grid;grid-template-columns:1fr;gap:6px;margin-top:14px}
+.kpi.inline{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.kpi{border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--well)}
+.kpi dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.kpi dd{font-family:var(--mono);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi dd.save{color:var(--simple)}
+.out{margin-top:18px}
+#answer{font-family:var(--mono);font-size:12.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink-2);background:var(--well);border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:8px;padding:12px 14px;min-height:48px}
+#answer.has{border-left-color:var(--tc,var(--line-2))}
+.err{background:var(--bad-bg);color:#ffb3ad;border:1px solid rgba(255,123,114,.45);border-radius:9px;padding:10px 12px;font-size:13.5px;margin-top:14px}
+.err b{color:var(--bad);font-family:var(--mono)}
+.muted{color:var(--ink-3);font-size:12.5px}
+
+/* traffic */
+.traffic{margin-top:16px}
+.traffic .pb{display:grid;grid-template-columns:repeat(3,minmax(0,140px)) minmax(0,1fr);gap:12px 20px;align-items:center}
+.split{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line)}
+.split div{height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);margin-top:8px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.traffic .note{grid-column:1/-1;font-size:12.5px;color:var(--ink-3)}
+
+/* sections */
+.section{padding:56px 0 8px}
+.section h2.t{font-size:20px;font-weight:650;letter-spacing:-.01em;margin-bottom:6px;display:flex;align-items:baseline;gap:10px}
+.section h2.t span{font-family:var(--mono);font-size:12px;font-weight:400;color:var(--ink-3)}
+.section .lede{max-width:720px}
+.diagram{margin-top:18px;overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:14px}
 .diagram svg{display:block;min-width:760px;width:100%;height:auto}
-.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}
-.step{border-top:2px solid var(--ink);padding-top:10px;font-size:14px;color:var(--ink-2)}
-.step b{display:block;color:var(--ink);margin-bottom:2px}
-pre{position:relative;font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;margin-top:16px;color:var(--ink-2)}
-footer{border-top:1px solid var(--line);margin-top:48px;padding:24px 0 40px;color:var(--ink-3);font-size:13px}
-footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
-@media (max-width:860px){
-  .grid{grid-template-columns:1fr}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+.step{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:12px 14px;font-size:13.5px;color:var(--ink-2)}
+.step b{display:block;color:var(--ink);font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+pre.term{font-family:var(--mono);font-size:12.5px;line-height:1.65;background:var(--well);border:1px solid var(--line);border-radius:var(--r);padding:16px;overflow-x:auto;margin-top:16px;color:var(--ink-2)}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:22px 0 40px;color:var(--ink-3);font-size:13px}
+footer .wrap{display:flex;justify-content:space-between;gap:12px 24px;flex-wrap:wrap}
+footer a{color:var(--ink-2)}
+footer .mono{font-size:12px}
+
+@media (max-width:1100px){
+  .split2{grid-template-columns:1fr}
+  .costcol{padding-left:0;border-left:0}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .kpi.inline{display:block}
+}
+@media (max-width:980px){
+  .board{grid-template-columns:1fr}
   .steps{grid-template-columns:1fr 1fr}
-  .kpis{grid-template-columns:1fr 1fr}
-  nav .hide-sm,.brand span{display:none}
-  nav{gap:14px}
+  .traffic .pb{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .traffic .pb > .tsplit{grid-column:1/-1}
+}
+@media (max-width:640px){
   .wrap{padding:0 16px}
+  .top{height:52px}
+  nav .hide-sm,.brand span{display:none}
+  nav{gap:0;font-size:12px}
+  nav a{padding:6px 5px}
+  .brand{gap:8px;font-size:13px}
+  .readouts{width:100%}
+  .readouts div{flex:1;padding:7px 10px}
+  .lanes{padding-left:30px}
+  .bus{left:8px}.src{left:0}
+  .lane::before{left:-21px;width:21px}
+  .lanes.pulse .lane.on::after{left:-21px}
+  .lane{grid-template-columns:auto minmax(0,1fr);row-gap:4px;padding:10px 12px}
+  .lane .price{grid-column:2;text-align:left}
+  .lane .price b{display:inline;margin-right:6px}
+  .steps{grid-template-columns:1fr}
+  .kpi dd{font-size:13.5px}
+  .examples{grid-template-columns:1fr 1fr}
+  .count .hint{display:none}
+  .zones b{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap top">
-    <div class="brand">Smart Router <span>· demo</span></div>
-    <nav>
-      <a href="#how">How it works</a>
-      <a class="hide-sm" href="#api">API</a>
-      <a class="hide-sm" href="/dashboard">Dashboard</a>
-      <a href="https://github.com/Nityaa08/smart-router">GitHub</a>
-      <a class="hide-sm" href="https://nityashree.in">Portfolio</a>
+    <a class="brand" href="/" aria-label="Smart Router home">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="4" cy="11" r="2.6" fill="#e6edf3"/><path d="M6.5 11 H10 M10 11 L17 4 M10 11 H17 M10 11 L17 18" stroke="#8593a1" stroke-width="1.6" fill="none"/><circle cx="18" cy="4" r="2" fill="#4ade80"/><circle cx="18" cy="11" r="2" fill="#fbbf24"/><circle cx="18" cy="18" r="2" fill="#b69cff"/></svg>
+      smart-router <span>/ control room</span>
+    </a>
+    <nav aria-label="Main">
+      <a class="hide-sm" href="#how">how it works</a>
+      <a class="hide-sm" href="#api">api</a>
+      <a href="/dashboard">dashboard</a>
+      <a href="https://github.com/Nityaa08/smart-router">github</a>
+      <a href="https://nityashree.in">portfolio</a>
     </nav>
   </div>
 </header>
 
 <main class="wrap">
-  <section class="hero">
-    <div class="eyebrow">Python · FastAPI · OpenAI-compatible LLM gateway</div>
-    <h1>Send each prompt to the cheapest model tier that can handle it.</h1>
-    <p class="lede">Smart Router sits between an app and its LLMs. Hand-written rules score each prompt in under a millisecond, pick a simple, medium or complex tier, fall back to the next tier if a provider fails, and log what the request would have cost on GPT-4o.</p>
+  <section class="intro" aria-labelledby="title">
+    <div>
+      <h1 id="title">Smart Router: every prompt gets a lane.</h1>
+      <p class="lede">An OpenAI-compatible LLM gateway. Hand-written rules score each prompt in under a millisecond and switch it to the cheapest model tier that fits, with fallback to the next tier and a cost log against GPT-4o.</p>
+    </div>
+    <dl class="readouts" aria-label="Gateway settings">
+      <div><dt>provider</dt><dd id="ro-provider">demo</dd></div>
+      <div><dt>classifier</dt><dd>rules, &lt;1 ms</dd></div>
+      <div><dt>baseline</dt><dd id="ro-base">gpt-4o</dd></div>
+    </dl>
   </section>
 
-  <div class="mode demo" id="mode" role="note">
-    <b>Demo mode.</b>
-    <span id="mode-text">Answers are simulated: no language model is called and no API key is used. The classification, routing, fallback, cost estimate and analytics are the project's real code.</span>
-  </div>
+  <div class="board">
+    <form class="panel" id="form" aria-labelledby="console-h">
+      <div class="ph">
+        <h2 id="console-h">Console</h2>
+        <span class="chip demo" id="mode-chip"><i aria-hidden="true"></i><span id="mode-label">Demo mode</span></span>
+      </div>
+      <p class="modeline" id="mode" role="note"><b id="mode-lead">Simulated answers.</b> <span id="mode-text">No language model is called and no API key is used. The classification, routing, fallback, cost estimate and analytics are the project's real code.</span></p>
+      <div class="pb">
+        <label for="prompt">Prompt</label>
+        <div class="field"><textarea id="prompt" maxlength="2000" spellcheck="false" aria-describedby="count">What is the capital of France?</textarea></div>
+        <div class="count" id="count-row"><span id="count" aria-live="off"></span><span class="hint">Ctrl/⌘ + Enter to send</span></div>
 
-  <div class="grid">
-    <form class="card" id="form">
-      <h2>Prompt</h2>
-      <textarea id="prompt" maxlength="2000" aria-label="Prompt">What is the capital of France?</textarea>
-      <div class="count" id="count"></div>
-      <label>Try an example</label>
-      <div class="chips" id="examples"></div>
-      <label for="force">Tier</label>
-      <select id="force">
-        <option value="">Automatic (let the classifier decide)</option>
-        <option value="simple">Force simple</option>
-        <option value="medium">Force medium</option>
-        <option value="complex">Force complex</option>
-      </select>
-      <button class="btn" id="go" type="submit">Route this prompt</button>
+        <div class="row">
+          <span class="lbl" id="ex-lbl">Load an example</span>
+          <div class="examples" id="examples" role="group" aria-labelledby="ex-lbl"></div>
+        </div>
+
+        <div class="row">
+          <label for="force">Tier override</label>
+          <select id="force">
+            <option value="">auto: let the classifier decide</option>
+            <option value="simple">force simple</option>
+            <option value="medium">force medium</option>
+            <option value="complex">force complex</option>
+          </select>
+        </div>
+
+        <button class="go" id="go" type="submit"><span id="go-text">Route this prompt</span> <kbd aria-hidden="true">↵</kbd></button>
+      </div>
     </form>
 
-    <section class="card" id="result" aria-live="polite">
-      <h2>Routing decision</h2>
-      <div class="empty">Send a prompt to see how it is scored and routed.</div>
+    <section class="panel" id="result" aria-labelledby="board-h">
+      <div class="ph">
+        <h2 id="board-h">Switchboard</h2>
+        <span id="reqmeta" class="mono" style="text-transform:none;letter-spacing:0"></span>
+      </div>
+      <div class="pb" id="board-body">
+        <p class="state" id="state" aria-live="polite">Loading the tiers…</p>
+        <div class="lanes" id="lanes">
+          <div class="bus" aria-hidden="true"></div><div class="src" aria-hidden="true"></div>
+        </div>
+
+        <div class="split2">
+        <div>
+        <div class="gauge" aria-labelledby="g-h">
+          <div class="gtop"><span id="g-h">Complexity score</span><span class="score">score<b id="score">-</b></span></div>
+          <div class="track" id="track" role="img" aria-label="Score gauge">
+            <span></span><span></span><span></span>
+            <div class="needle" id="needle" style="left:0%"></div>
+          </div>
+          <div class="zones" aria-hidden="true">
+            <span style="color:var(--simple)"><b>0-1 </b>simple</span>
+            <span style="color:var(--medium)"><b>2-3 </b>medium</span>
+            <span style="color:var(--complex)"><span><b>4+ </b>complex</span><em>10+</em></span>
+          </div>
+        </div>
+
+        <div class="log">
+          <div class="lh"><span>Rules fired</span><span>points</span></div>
+          <ol id="rules"><li><span class="pts">··</span><span class="nm muted">No prompt scored yet.</span></li></ol>
+        </div>
+
+        </div>
+        <div class="costcol">
+          <span class="lbl">Cost estimate</span>
+          <div id="costbox"><p class="muted">Priced per request once it is sent: this tier against GPT-4o list price for the same tokens.</p></div>
+        </div>
+        </div>
+        <div class="out">
+          <span class="lbl" id="answer-lbl">Response</span>
+          <div id="answer" aria-labelledby="answer-lbl" aria-live="polite"><span class="muted">Press “Route this prompt” to send it through the gateway.</span></div>
+        </div>
+      </div>
     </section>
   </div>
 
-  <section class="card stats" id="stats">
-    <h2>This instance so far</h2>
-    <div id="stats-body" class="empty" style="padding:8px 0;text-align:left">No requests yet.</div>
+  <section class="panel traffic" id="stats" aria-labelledby="stats-h">
+    <div class="ph"><h2 id="stats-h">Traffic on this instance</h2><a href="/dashboard" style="text-transform:none;letter-spacing:0">open dashboard →</a></div>
+    <div class="pb" id="stats-body"><p class="muted" style="grid-column:1/-1">No requests yet.</p></div>
   </section>
 
-  <section class="section" id="how">
-    <h3>How it works</h3>
+  <section class="section" id="how" aria-labelledby="how-h">
+    <h2 class="t" id="how-h">How it works <span>request path</span></h2>
     <p class="lede">The gateway speaks the OpenAI chat format, so an app only changes its base URL. No LLM is used to classify: the score comes from length, keywords, code, multi-step and math patterns.</p>
     <div class="diagram">
       <svg viewBox="0 0 980 245" role="img" aria-labelledby="dg-t">
         <title id="dg-t">App sends a chat request; cache check; rule-based classifier picks a tier; the tier's provider answers, falling back to the next tier on failure; cost is logged.</title>
-        <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/></marker></defs>
-        <g fill="none" stroke="var(--ink-3)" stroke-width="1.4">
+        <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8593a1"/></marker></defs>
+        <g fill="none" stroke="#5b6876" stroke-width="1.4">
           <path d="M112 95 H138" marker-end="url(#a)"/>
           <path d="M262 95 H288" marker-end="url(#a)"/>
-          <path d="M432 95 H470 V40 H498" marker-end="url(#a)"/>
-          <path d="M470 95 H498" marker-end="url(#a)"/>
-          <path d="M470 95 V150 H498" marker-end="url(#a)"/>
-          <path d="M562 62 V76" marker-end="url(#a)" stroke-dasharray="3 3"/>
-          <path d="M562 117 V131" marker-end="url(#a)" stroke-dasharray="3 3"/>
+          <path d="M432 95 H470 V40 H498" marker-end="url(#a)" stroke="#4ade80"/>
+          <path d="M470 95 H498" marker-end="url(#a)" stroke="#fbbf24"/>
+          <path d="M470 95 V150 H498" marker-end="url(#a)" stroke="#b69cff"/>
+          <path d="M562 62 V76" marker-end="url(#a)" stroke-dasharray="3 3" stroke="#ff7b72"/>
+          <path d="M562 117 V131" marker-end="url(#a)" stroke-dasharray="3 3" stroke="#ff7b72"/>
           <path d="M628 95 H658" marker-end="url(#a)"/>
           <path d="M800 95 H818" marker-end="url(#a)"/>
           <path d="M200 120 V215 H895 V122" stroke-dasharray="3 3" marker-end="url(#a)"/>
         </g>
-        <g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="13" text-anchor="middle">
-          <text x="548" y="236" fill="var(--ink-3)" font-size="11">cache hit (Redis, SHA-256 of messages): answered with no provider call</text>
-          <rect x="4" y="70" width="108" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="58" y="92" fill="var(--ink)" font-weight="600">Your app</text>
-          <text x="58" y="109" fill="var(--ink-3)" font-size="11">OpenAI SDK</text>
-
-          <rect x="140" y="70" width="122" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="201" y="92" fill="var(--ink)" font-weight="600">Gateway</text>
-          <text x="201" y="109" fill="var(--ink-3)" font-size="11">auth · limits · cache</text>
-
-          <rect x="290" y="70" width="142" height="50" rx="9" fill="var(--ink)"/>
-          <text x="361" y="92" fill="var(--bg)" font-weight="600">Rule classifier</text>
-          <text x="361" y="109" fill="var(--bg)" font-size="11" opacity=".75">score 0-15, &lt; 1 ms</text>
-
-          <rect x="500" y="20" width="128" height="42" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="564" y="46" fill="var(--ink)" font-weight="600">simple · ≤ 1</text>
-          <rect x="500" y="76" width="128" height="42" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="564" y="102" fill="var(--ink)" font-weight="600">medium · 2-3</text>
-          <rect x="500" y="132" width="128" height="42" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="564" y="158" fill="var(--ink)" font-weight="600">complex · ≥ 4</text>
-          <text x="564" y="194" fill="var(--ink-3)" font-size="11">provider down: try the next tier up</text>
-
-          <rect x="660" y="70" width="140" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="730" y="92" fill="var(--ink)" font-weight="600">Provider</text>
-          <text x="730" y="109" fill="var(--ink-3)" font-size="11">Groq · OpenRouter · …</text>
-
-          <rect x="820" y="70" width="150" height="50" rx="9" fill="var(--surface)" stroke="var(--line-2)"/>
-          <text x="895" y="92" fill="var(--ink)" font-weight="600">Cost log</text>
-          <text x="895" y="109" fill="var(--ink-3)" font-size="11">tokens · cost vs GPT-4o</text>
+        <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" text-anchor="middle">
+          <text x="548" y="236" fill="#8593a1" font-size="11">cache hit (Redis, SHA-256 of messages): answered with no provider call</text>
+          <rect x="4" y="70" width="108" height="50" rx="8" fill="#141b24" stroke="#2c3743"/>
+          <text x="58" y="92" fill="#e6edf3" font-weight="600">your app</text>
+          <text x="58" y="109" fill="#8593a1" font-size="10.5">OpenAI SDK</text>
+          <rect x="140" y="70" width="122" height="50" rx="8" fill="#141b24" stroke="#2c3743"/>
+          <text x="201" y="92" fill="#e6edf3" font-weight="600">gateway</text>
+          <text x="201" y="109" fill="#8593a1" font-size="10.5">auth · limits · cache</text>
+          <rect x="290" y="70" width="142" height="50" rx="8" fill="#1b2633" stroke="#7cc7ff"/>
+          <text x="361" y="92" fill="#e6edf3" font-weight="600">rule classifier</text>
+          <text x="361" y="109" fill="#a9b4bf" font-size="10.5">score 0-15, &lt; 1 ms</text>
+          <rect x="500" y="20" width="128" height="42" rx="8" fill="#0f1d16" stroke="#4ade80"/>
+          <text x="564" y="46" fill="#4ade80" font-weight="600">simple · ≤ 1</text>
+          <rect x="500" y="76" width="128" height="42" rx="8" fill="#211b0c" stroke="#fbbf24"/>
+          <text x="564" y="102" fill="#fbbf24" font-weight="600">medium · 2-3</text>
+          <rect x="500" y="132" width="128" height="42" rx="8" fill="#1b1729" stroke="#b69cff"/>
+          <text x="564" y="158" fill="#b69cff" font-weight="600">complex · ≥ 4</text>
+          <text x="564" y="194" fill="#ff7b72" font-size="10.5">provider down: try the next tier up</text>
+          <rect x="660" y="70" width="140" height="50" rx="8" fill="#141b24" stroke="#2c3743"/>
+          <text x="730" y="92" fill="#e6edf3" font-weight="600">provider</text>
+          <text x="730" y="109" fill="#8593a1" font-size="10.5">Groq · OpenRouter · …</text>
+          <rect x="820" y="70" width="150" height="50" rx="8" fill="#141b24" stroke="#2c3743"/>
+          <text x="895" y="92" fill="#e6edf3" font-weight="600">cost log</text>
+          <text x="895" y="109" fill="#8593a1" font-size="10.5">tokens · cost vs GPT-4o</text>
         </g>
       </svg>
     </div>
     <div class="steps">
       <div class="step"><b>Drop-in API</b><code>POST /v1/chat/completions</code>, plus <code>X-Router-Tier</code> and <code>X-Router-Model</code> headers.</div>
-      <div class="step"><b>Explainable</b>Every decision can be traced to the rules above; <code>/v1/route/explain</code> returns them.</div>
+      <div class="step"><b>Explainable</b>Every decision traces back to the rules in the log above; <code>/v1/route/explain</code> returns them.</div>
       <div class="step"><b>Resilient</b>A failing provider escalates to the next tier, for normal and streamed requests.</div>
       <div class="step"><b>Tested</b>Unit tests with fake providers cover routing, fallback, streaming, cache, auth and limits.</div>
     </div>
   </section>
 
-  <section class="section" id="api">
-    <h3>Call it like OpenAI</h3>
-    <p class="lede">Point any OpenAI client at the gateway. On this public demo the answers are simulated and requests are rate limited.</p>
-    <pre id="snippet"></pre>
+  <section class="section" id="api" aria-labelledby="api-h">
+    <h2 class="t" id="api-h">Call it like OpenAI <span>python · curl</span></h2>
+    <p class="lede">Point any OpenAI client at the gateway. On this public demo the answers are simulated and requests are rate limited. Full schema in the <a href="/docs">API docs</a>.</p>
+    <pre class="term" id="snippet"></pre>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <span>Built by <a href="https://nityashree.in">Nityashree S</a> · <a href="https://github.com/Nityaa08/smart-router">Source on GitHub</a></span>
-    <span><a href="/health">/health</a> · <a href="/analytics">/analytics</a> · <a href="/docs">API docs</a></span>
+    <span>Built by <a href="https://nityashree.in">Nityashree S</a> · <a href="https://github.com/Nityaa08/smart-router">source on GitHub</a></span>
+    <span class="mono"><a href="/dashboard">/dashboard</a> · <a href="/health">/health</a> · <a href="/analytics">/analytics</a> · <a href="/docs">/docs</a></span>
   </div>
 </footer>
 
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
+  const MAX = 2000;
+  const TIERS = ["simple", "medium", "complex"];
+  const RANGE = { simple: "score 0-1", medium: "score 2-3", complex: "score 4+" };
+  const COLOR = { simple: "var(--simple)", medium: "var(--medium)", complex: "var(--complex)" };
   const EXAMPLES = [
-    ["Simple", "What is the capital of France?"],
-    ["Medium", "Explain the difference between a process and a thread, and compare how each shares memory."],
-    ["Complex", "Implement an LRU cache in Python with O(1) get and put. First design the data structures, then write the class, then analyze the time complexity.\n\n```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        ...\n```"],
-    ["Many simple questions", "What is DNS? What is TCP? What is HTTP? Define latency. Who is Alan Turing?"],
+    ["simple", "Simple", "What is the capital of France?"],
+    ["medium", "Medium", "Explain the difference between a process and a thread, and compare how each shares memory."],
+    ["complex", "Complex", "Implement an LRU cache in Python with O(1) get and put. First design the data structures, then write the class, then analyze the time complexity.\n\n```python\nclass LRUCache:\n    def __init__(self, capacity: int):\n        ...\n```"],
+    ["simple", "Many simple questions", "What is DNS? What is TCP? What is HTTP? Define latency. Who is Alan Turing?"],
   ];
-  const TIER_COLOR = { simple: "var(--t-simple)", medium: "var(--t-medium)", complex: "var(--t-complex)" };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const usd = (x) => x === 0 ? "$0" : x < 0.01 ? "$" + x.toPrecision(2) : "$" + x.toFixed(4);
+  const price = (v) => "$" + (v > 0 && v < 0.1 ? v.toFixed(3) : v.toFixed(2));
+  const per1m = (p) => p ? `${price(p.input)} / ${price(p.output)}` : "";
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let lanesReady = false;
+  let baseline = { model: "gpt-4o" };
 
-  const box = $("examples");
-  for (const [label, text] of EXAMPLES) {
+  // ── examples, counter, keyboard ──
+  for (const [tier, label, text] of EXAMPLES) {
     const b = document.createElement("button");
-    b.type = "button"; b.textContent = label;
+    b.type = "button";
+    b.innerHTML = `<i style="background:${COLOR[tier]}" aria-hidden="true"></i>${esc(label)}`;
     b.onclick = () => { $("prompt").value = text; count(); send(); };
-    box.appendChild(b);
+    $("examples").appendChild(b);
   }
-  const count = () => { $("count").textContent = $("prompt").value.length + " / 2000 characters"; };
+  const count = () => {
+    const n = $("prompt").value.length;
+    $("count").textContent = `${n} / ${MAX} characters`;
+    $("count-row").classList.toggle("near", n > MAX * 0.9);
+  };
   $("prompt").addEventListener("input", count); count();
+  $("prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(e); });
 
   $("snippet").textContent =
 `from openai import OpenAI
@@ -268,10 +474,13 @@ print(r.headers["x-router-tier"], r.headers["x-router-model"])
 # or: curl -s ${location.origin}/v1/route/explain -H 'Content-Type: application/json' \\
 #   -d '{"messages":[{"role":"user","content":"What is 2+2?"}]}'`;
 
+  // ── demo / live status chip ──
   fetch("/health").then(r => r.json()).then(h => {
+    if (h.provider_name) $("ro-provider").textContent = h.provider_name;
     if (h.provider_name && h.provider_name !== "demo") {
-      $("mode").className = "mode live";
-      $("mode").querySelector("b").textContent = "Live.";
+      $("mode-chip").className = "chip live";
+      $("mode-label").textContent = "Live";
+      $("mode-lead").textContent = "Real models.";
       $("mode-text").textContent = "Answers come from real models through " + h.provider_name + ". Requests are rate limited and answers are kept short.";
     }
   }).catch(() => {});
@@ -281,18 +490,99 @@ print(r.headers["x-router-tier"], r.headers["x-router-model"])
     let data = null; try { data = await r.json(); } catch (e) {}
     return { ok: r.ok, status: r.status, data, headers: r.headers };
   }
-
   function errorBox(status, data) {
     const msg = (data && (data.error && (data.error.message || data.error) || data.detail)) || "Request failed";
     const hint = status === 429 ? " The public demo allows a few requests a minute; wait a moment and try again." : "";
-    return `<div class="err"><b>HTTP ${status}</b>: ${esc(typeof msg === "string" ? msg : JSON.stringify(msg))}${hint}</div>`;
+    return `<div class="err" role="alert"><b>${status ? "HTTP " + status : "ERROR"}</b> ${esc(typeof msg === "string" ? msg : JSON.stringify(msg))}${hint}</div>`;
+  }
+
+  // ── switchboard ──
+  function buildLanes(x) {
+    const box = $("lanes");
+    box.querySelectorAll(".lane").forEach(n => n.remove());
+    for (const t of x.tiers) {
+      const d = document.createElement("div");
+      d.className = "lane"; d.dataset.tier = t.tier; d.id = "lane-" + t.tier;
+      d.innerHTML = `<span class="lamp" aria-hidden="true"></span>
+        <div style="min-width:0"><div class="name">${esc(t.tier)} <em>${RANGE[t.tier] || ""}</em>
+          <span class="tag routed">routed</span><span class="tag classified">classifier pick</span><span class="tag down">fell through</span></div>
+          <div class="model" title="${esc(t.model)}">${esc(t.model)}</div></div>
+        <div class="price"><b>${per1m(t.price_per_1m_tokens_usd)}</b>per 1M in / out</div>`;
+      box.appendChild(d);
+    }
+    if (x.baseline) { baseline = x.baseline; $("ro-base").textContent = x.baseline.model; }
+    lanesReady = true;
+  }
+
+  function setLanes(routed, picked, failed) {
+    const box = $("lanes");
+    box.classList.remove("pulse"); void box.offsetWidth;
+    for (const t of TIERS) {
+      const el = $("lane-" + t); if (!el) continue;
+      el.classList.toggle("on", t === routed);
+      el.classList.toggle("picked", t === picked);
+      el.classList.toggle("failed", t === failed && t !== routed);
+      el.setAttribute("aria-current", t === routed ? "true" : "false");
+    }
+    if (!reduced && routed) box.classList.add("pulse");
+  }
+
+  function renderScore(x) {
+    $("score").textContent = x.score;
+    $("needle").style.left = (Math.min(x.score, 10) / 10 * 100) + "%";
+    $("track").setAttribute("aria-label", `Score ${x.score}: ${x.tier} tier (simple 0-1, medium 2-3, complex 4 or more)`);
+    $("track").querySelectorAll("span").forEach((s, i) => s.classList.toggle("hit", TIERS[i] === x.tier));
+    const raw = x.signals.reduce((t, s) => t + s.points, 0);
+    let html = x.signals.length ? "" : `<li><span class="pts">0</span><span class="nm">no rule fired<span class="dt">short prompt with no keywords, code or steps</span></span></li>`;
+    for (const s of x.signals) {
+      const cls = s.points > 0 ? "up" : s.points < 0 ? "down" : "";
+      html += `<li><span class="pts ${cls}">${s.points > 0 ? "+" : ""}${s.points}</span><span class="nm">${esc(s.name)}<span class="dt">${esc(s.detail)}</span></span></li>`;
+    }
+    html += `<li class="total"><span class="pts">=${x.score}</span><span class="nm">score → ${esc(x.tier)}${raw < 0 ? `<span class="dt">sum ${raw}, floored at 0</span>` : ""}</span></li>`;
+    const ol = $("rules");
+    ol.innerHTML = html;
+    if (!reduced) { ol.parentElement.classList.remove("anim"); void ol.offsetWidth; ol.parentElement.classList.add("anim"); ol.querySelectorAll("li").forEach((li, i) => li.style.animationDelay = (i * 45) + "ms"); }
+  }
+
+  function renderCost(chat) {
+    const r = chat.data.router;
+    const cost = r.actual_cost_usd, base = cost + r.cost_saved_usd;
+    const pct = base > 0 ? Math.round((1 - cost / base) * 100) : 0;
+    const w = base > 0 ? Math.max(1.5, cost / base * 100) : 0;
+    const u = chat.data.usage || {};
+    $("costbox").innerHTML = `
+      <div class="cost" aria-label="Estimated cost">
+        <div class="k"><span>this request · ${esc(r.tier)}</span></div>
+        <div class="bar"><i style="width:${w}%;background:${COLOR[r.tier]}"></i></div><div class="v">${usd(cost)}</div>
+        <div class="k"><span>same tokens on ${esc(baseline.model)}</span></div>
+        <div class="bar"><i style="width:100%;background:#5b6876"></i></div><div class="v">${usd(base)}</div>
+      </div>
+      <dl class="kpis">
+        <div class="kpi inline"><dt>est. saving</dt><dd class="save">${pct}%</dd></div>
+        <div class="kpi inline"><dt>tokens in/out</dt><dd>${u.prompt_tokens ?? "-"} / ${u.completion_tokens ?? "-"}</dd></div>
+        <div class="kpi inline"><dt>latency${r.from_cache ? " · cache" : ""}</dt><dd>${r.latency_ms} ms</dd></div>
+      </dl>
+      <p class="muted" style="margin-top:10px;font-size:11.5px">List prices${baseline.price_per_1m_tokens_usd ? ` (GPT-4o ${per1m(baseline.price_per_1m_tokens_usd)} per 1M)` : ""}. An estimate, not a measured saving.</p>`;
+  }
+
+  async function preview() {
+    // Classify the starting prompt (no model call) so the board isn't empty.
+    try {
+      const ex = await post("/v1/route/explain", { messages: [{ role: "user", content: $("prompt").value }] });
+      if (!ex.ok) { $("state").innerHTML = errorBox(ex.status, ex.data); return; }
+      buildLanes(ex.data);
+      setLanes(null, ex.data.tier, null);
+      renderScore(ex.data);
+      $("state").innerHTML = `Classifier preview: <b>${esc(ex.data.tier)}</b>. Nothing sent yet.`;
+    } catch (e) { $("state").textContent = "Could not reach the gateway."; }
   }
 
   async function send(e) {
     if (e) e.preventDefault();
     const content = $("prompt").value.trim();
-    if (!content) return;
-    const btn = $("go"); btn.disabled = true; btn.textContent = "Routing…";
+    if (!content) { $("prompt").focus(); return; }
+    const btn = $("go"); btn.disabled = true; $("go-text").textContent = "Routing…";
+    $("state").textContent = "Scoring and routing…";
     const messages = [{ role: "user", content }];
     const force = $("force").value || null;
     try {
@@ -300,65 +590,63 @@ print(r.headers["x-router-tier"], r.headers["x-router-model"])
         post("/v1/route/explain", { messages }),
         post("/v1/chat/completions", { messages, force_tier: force }),
       ]);
-      if (!ex.ok) { $("result").innerHTML = "<h2>Routing decision</h2>" + errorBox(ex.status, ex.data); return; }
+      if (!ex.ok) { $("state").innerHTML = errorBox(ex.status, ex.data); return; }
       render(ex.data, chat, force);
       loadStats();
+      // On one-column layouts the switchboard is below the console: bring it into view.
+      const top = $("result").getBoundingClientRect().top;
+      if (matchMedia("(max-width: 980px)").matches && top > innerHeight * 0.5) $("result").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
     } catch (err) {
-      $("result").innerHTML = "<h2>Routing decision</h2>" + errorBox(0, { error: "Network error" });
+      $("state").innerHTML = errorBox(0, { error: "Network error: the gateway did not answer." });
     } finally {
-      btn.disabled = false; btn.textContent = "Route this prompt";
+      btn.disabled = false; $("go-text").textContent = "Route this prompt";
     }
   }
 
   function render(x, chat, force) {
-    const pos = (Math.min(x.score, 7.5) + 0.5) / 8 * 100;
+    if (!lanesReady) buildLanes(x);
     const r = chat.ok ? chat.data.router : null;
-    const used = r ? r.tier : (force || x.tier);
-    let html = `<h2>Routing decision</h2>
-      <div class="tierline"><div class="tier">${esc(used)}</div>
-      <span class="model">${esc(r ? r.model : "")}</span>
-      ${force ? `<span class="fb">forced by you (classifier said ${esc(x.tier)})</span>` : ""}
-      ${chat.ok && chat.headers.get("x-router-fallback") === "true" ? `<span class="fb">fell back</span>` : ""}</div>
-      <div class="meter" aria-hidden="true"><span style="background:var(--t-simple)"></span><span style="background:var(--t-medium)"></span><span style="background:var(--t-complex)"></span><div class="needle" style="left:calc(${pos}% - 1px)"></div></div>
-      <div class="scale"><span>simple 0-1</span><span>medium 2-3</span><span>complex 4+</span></div>
-      <ul class="signals">`;
-    if (!x.signals.length) html += `<li><span>No rule fired<small>score 0</small></span><b>0</b></li>`;
-    for (const s of x.signals) html += `<li><span>${esc(s.name)}<small>${esc(s.detail)}</small></span><b>${s.points > 0 ? "+" : ""}${s.points}</b></li>`;
-    html += `<li class="total"><span>Score${x.signals.reduce((t, s) => t + s.points, 0) < 0 ? "<small>never below 0</small>" : ""}</span><b>${x.score}</b></li></ul>`;
+    const fellBack = chat.ok && chat.headers.get("x-router-fallback") === "true";
+    const routed = r ? r.tier : null;
+    const picked = force || x.tier;
+    setLanes(routed, x.tier, fellBack ? picked : null);
+    renderScore(x);
+    let state = r ? `Routed to <b>${esc(routed)}</b> · ${esc(r.model)}` : `Classified as <b>${esc(x.tier)}</b>; the request failed.`;
+    if (force) state += `<span class="flag forced" id="forced">forced by you · classifier said ${esc(x.tier)}</span>`;
+    if (fellBack) state += `<span class="flag fb">fallback · ${esc(picked)} failed, escalated</span>`;
+    $("state").innerHTML = state;
+    $("reqmeta").textContent = r ? `${chat.data.id || ""} · ${r.latency_ms} ms` : "";
     if (chat.ok) {
-      const saved = r.cost_saved_usd, cost = r.actual_cost_usd, base = cost + saved;
-      html += `<div class="kpis">
-        <div class="kpi"><div class="k">Est. cost, this tier</div><div class="v">${usd(cost)}</div></div>
-        <div class="kpi"><div class="k">Same tokens on GPT-4o</div><div class="v">${usd(base)}</div></div>
-        <div class="kpi"><div class="k">Latency${r.from_cache ? " (cache)" : ""}</div><div class="v">${r.latency_ms} ms</div></div>
-      </div>
-      <div class="answer">${esc(chat.data.choices[0].message.content)}</div>`;
+      renderCost(chat);
+      const a = $("answer");
+      a.className = "has"; a.style.setProperty("--tc", COLOR[routed]);
+      a.textContent = chat.data.choices[0].message.content;
     } else {
-      html += `<div style="margin-top:16px">${errorBox(chat.status, chat.data)}</div>`;
+      $("costbox").innerHTML = "";
+      $("answer").className = "";
+      $("answer").innerHTML = errorBox(chat.status, chat.data);
     }
-    $("result").innerHTML = html;
   }
 
   async function loadStats() {
     try {
       const a = await fetch("/analytics").then(r => r.json());
       if (!a.total_requests) return;
-      const tiers = ["simple", "medium", "complex"];
       const n = a.total_requests;
-      $("stats-body").className = "";
       $("stats-body").innerHTML = `
-        <div class="kpis" style="margin-top:0">
-          <div class="kpi"><div class="k">Requests</div><div class="v">${n}</div></div>
-          <div class="kpi"><div class="k">Est. cost</div><div class="v">${usd(a.actual_cost_usd)}</div></div>
-          <div class="kpi"><div class="k">Est. on GPT-4o</div><div class="v">${usd(a.baseline_cost_usd)}</div></div>
+        <dl class="kpi"><dt>requests</dt><dd>${n}</dd></dl>
+        <dl class="kpi"><dt>est. cost</dt><dd>${usd(a.actual_cost_usd)}</dd></dl>
+        <dl class="kpi"><dt>est. on gpt-4o</dt><dd>${usd(a.baseline_cost_usd)}</dd></dl>
+        <div class="tsplit">
+          <div class="split" role="img" aria-label="Requests by tier">${TIERS.map(t => a.by_tier[t] ? `<div style="width:${a.by_tier[t].count / n * 100}%;background:${COLOR[t]}" title="${t}"></div>` : "").join("")}</div>
+          <div class="legend">${TIERS.map(t => `<span><i style="background:${COLOR[t]}"></i>${t} ${a.by_tier[t] ? a.by_tier[t].count : 0}</span>`).join("")}</div>
         </div>
-        <div class="bars">${tiers.map(t => a.by_tier[t] ? `<div style="width:${a.by_tier[t].count / n * 100}%;background:${TIER_COLOR[t]}" title="${t}"></div>` : "").join("")}</div>
-        <div class="legend">${tiers.map(t => `<span><i style="background:${TIER_COLOR[t]}"></i>${t}: ${a.by_tier[t] ? a.by_tier[t].count : 0}</span>`).join("")}</div>
-        <p style="font-size:12.5px;color:var(--ink-3);margin-top:10px">Counts are kept in this serverless instance's memory and reset when it restarts. Costs use list prices and, in demo mode, estimated token counts; they show the pricing logic, not measured savings.</p>`;
+        <p class="note">Counts live in this serverless instance's memory and reset when it restarts. Costs use list prices and, in demo mode, estimated token counts: they show the pricing logic, not measured savings.</p>`;
     } catch (e) {}
   }
 
   $("form").addEventListener("submit", send);
+  preview();
   loadStats();
 })();
 </script>

@@ -142,6 +142,9 @@ class TestExplain:
         assert simple and simple[0]["points"] < 0  # simple keywords pull the score down
         assert [t["tier"] for t in x["tiers"]] == ["simple", "medium", "complex"]
         assert x["baseline"]["model"] == BASELINE_MODEL
+        # List prices per 1M tokens, so the page can show each lane's price.
+        assert x["baseline"]["price_per_1m_tokens_usd"] == {"input": 2.50, "output": 10.00}
+        assert all(t["price_per_1m_tokens_usd"]["input"] < 2.50 for t in x["tiers"])
 
     def test_signals_sum_to_score_for_many_prompts(self):
         prompts = [
