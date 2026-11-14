@@ -1,4 +1,32 @@
-.PHONY: dev stop migrate test unit-test logs clean
+.PHONY: install demo test unit-test dev stop migrate migrate-new smoke logs clean
+
+# ── Local, no Docker ─────────────────────────────────────────────────────────
+# Python 3.12 is preferred: the pinned asyncpg 0.29 does not build on 3.13.
+PYTHON ?= $(shell command -v python3.12 || command -v python3.11 || command -v python3)
+VENV = .venv
+BIN = $(CURDIR)/$(VENV)/bin
+PORT ?= 8000
+
+$(VENV)/.installed: backend/requirements.txt
+	$(PYTHON) -m venv $(VENV)
+	$(BIN)/pip install -q --upgrade pip
+	$(BIN)/pip install -q -r backend/requirements.txt pytest
+	@touch $@
+
+install: $(VENV)/.installed
+
+# Demo mode: simulated answers, no API key, no Postgres, no Redis.
+demo: install
+	@echo "Smart Router (demo mode) at http://localhost:$(PORT)  (dashboard: /dashboard, API docs: /docs)"
+	cd backend && PROVIDER=demo DATABASE_URL=memory REDIS_URL=none $(BIN)/uvicorn app.main:app --reload --port $(PORT)
+
+# Unit tests: no database, Redis or LLM needed (the same suite CI runs).
+test: install
+	cd backend && $(BIN)/python -m pytest tests/ -q
+
+unit-test: test
+
+# ── Docker Compose (Postgres + Redis + API) ──────────────────────────────────
 
 dev:
 	@echo "Starting Smart Router (Postgres + Redis + API)..."
@@ -22,10 +50,11 @@ migrate:
 migrate-new:
 	docker compose exec api alembic revision --autogenerate -m "$(MSG)"
 
-# If ROUTER_API_KEY is set, run as: make test ROUTER_API_KEY=your-key
+# If ROUTER_API_KEY is set, run as: make smoke ROUTER_API_KEY=your-key
 AUTH = $(if $(ROUTER_API_KEY),-H "Authorization: Bearer $(ROUTER_API_KEY)",)
 
-test:
+# End-to-end checks against a running stack (make dev or make demo).
+smoke:
 	@echo "Running smoke tests..."
 	@curl -sf http://localhost:8000/health | python3 -m json.tool
 	@echo ""
@@ -43,10 +72,6 @@ test:
 	@echo ""
 	@echo "Analytics:"
 	@curl -sf http://localhost:8000/analytics $(AUTH) | python3 -m json.tool
-
-unit-test:
-	@echo "Running unit tests (no services required)..."
-	cd backend && python -m pytest tests/ -v
 
 logs:
 	docker compose logs -f api

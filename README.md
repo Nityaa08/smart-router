@@ -6,7 +6,20 @@
 
 > **An OpenAI-compatible LLM gateway that routes each prompt to one of three model tiers using hand-written rules, and estimates the cost of every request.**
 
-[![Demo page: a prompt, the tier it was routed to, the scoring rules that fired and the estimated cost](docs/screenshot.png)](https://smart-router-nityashree.vercel.app)
+[![Demo page: a prompt console on the left; on the right a switchboard of three tier lanes with the routed lane lit, a score gauge against the tier thresholds, the rules that fired with their points, and the estimated cost against GPT-4o](docs/screenshot.png)](https://smart-router-nityashree.vercel.app)
+
+### Run it in 1 minute
+
+Needs Python 3.12 (the pinned `asyncpg` does not build on 3.13) and `make`. No API key, no Docker.
+
+```bash
+git clone https://github.com/Nityaa08/smart-router && cd smart-router
+make demo    # creates .venv, installs, serves demo mode at http://localhost:8000
+make test    # the unit test suite (no database, Redis or LLM needed)
+```
+
+Without `make`: `cd backend && pip install -r requirements.txt && PROVIDER=demo DATABASE_URL=memory REDIS_URL=none uvicorn app.main:app --reload`.
+With Docker (Postgres + Redis + a real provider): `cp .env.example .env`, set a provider in `.env`, then `make dev` (or `docker compose up --build`). See [Quick Start](#quick-start).
 
 ---
 
@@ -45,7 +58,7 @@ The public demo runs this code on Vercel's free tier in **demo mode** (`PROVIDER
 
 - **No language model is called and no API key exists in the deployment.** Each tier is a `DemoProvider` that returns a clearly labelled simulated answer. Token counts are estimates (prompt length / 4, and a typical answer length per tier).
 - **Everything else is the real code:** the classifier, routing, tier fallback, cost estimate at list prices, rate limit and analytics.
-- The page at `/` shows, for any prompt, the tier, the score and every rule that fired (from `POST /v1/route/explain`), the estimated cost against GPT-4o and the simulated answer. The original dashboard is at `/dashboard`.
+- The page at `/` is a small control room: a prompt console, and a switchboard that lights the lane (simple, medium or complex, each with its model and list price) the prompt was routed to, places the score on a gauge against the tier thresholds, lists every rule that fired with its points (from `POST /v1/route/explain`), and compares the estimated cost with GPT-4o. The dashboard at `/dashboard` shows totals and requests by tier for the instance.
 - There is no Postgres or Redis on the demo: `DATABASE_URL=memory` keeps the request log in the function's memory (so `/analytics` covers one instance and resets), and `REDIS_URL=none` turns the cache off.
 - Guards for a public URL: 20 requests a minute per client IP (`RATE_LIMIT`, counted per instance), prompts up to 2,000 characters (`MAX_PROMPT_CHARS`), and the client IP taken from Vercel's `X-Real-IP` header (`TRUST_PROXY_HEADERS=true`).
 
@@ -88,7 +101,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Zero-cost classifier** | Rule-based scoring on token count, keywords, code patterns — no LLM, no API call |
 | **OpenAI-compatible API** | Drop-in `POST /v1/chat/completions` — works with any OpenAI SDK |
 | **5 provider options** | Ollama (local) · OpenRouter (free) · Groq (free) · Any OpenAI-compatible API · `demo` (simulated, no key) |
-| **Explainable routing** | `POST /v1/route/explain` returns the score, every rule that fired and the per-tier models, without calling a model |
+| **Explainable routing** | `POST /v1/route/explain` returns the score, every rule that fired and the per-tier models with their list prices, without calling a model |
 | **Router response headers** | `X-Router-Tier`, `X-Router-Model`, `X-Cost-Saved` on every response |
 | **Redis caching** | Identical prompts served from cache (SHA-256 keyed, 1hr TTL) |
 | **Cost analytics dashboard** | `GET /analytics` — estimated cost, estimated savings vs. GPT-4o list prices, per-tier breakdown |
@@ -105,6 +118,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 ### Option 0 — Demo mode (no Docker, no model, no key)
 
 ```bash
+make demo                      # or, by hand:
 cd backend
 pip install -r requirements.txt
 PROVIDER=demo DATABASE_URL=memory REDIS_URL=none uvicorn app.main:app --reload
@@ -242,15 +256,15 @@ Example shape (illustrative values):
 
 ```bash
 # Unit tests (no database or LLM required — runs in CI)
-make unit-test
-
-# Integration smoke tests (requires running stack)
 make test
+
+# End-to-end smoke checks against a running server (make demo or make dev)
+make smoke
 ```
 
 The unit test suite has 132 tests (64 classifier, 22 config/cost/default-model, 31 API, 15 demo mode; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
-`make test` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make test ROUTER_API_KEY=your-key`.
+`make smoke` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make smoke ROUTER_API_KEY=your-key`.
 
 ---
 
@@ -307,7 +321,7 @@ OPENAI_COMPAT_MEDIUM_MODEL=llama3.1:8b
 OPENAI_COMPAT_COMPLEX_MODEL=llama3.1:8b
 ```
 
-3. Run `make dev`, then `make test`. Checked on 2026-10-28: health is `ok`, both prompts return HTTP 200, and `/analytics` shows 2 requests. Run `make clean` when done.
+3. Run `make dev`, then `make smoke` (called `make test` at the time). Checked on 2026-10-28: health is `ok`, both prompts return HTTP 200, and `/analytics` shows 2 requests. Run `make clean` when done.
 
 On 2026-11-02 streaming and the rate limit were checked against the same fake server (API run with uvicorn, without Postgres or Redis): `"stream": true` returned the chunks and `[DONE]`, and with `RATE_LIMIT=5/minute` the sixth request got HTTP 429. The full Docker stack was not re-run that day.
 
@@ -365,7 +379,7 @@ See `.env.example` for the full list.
 smart-router/
 ├── docker-compose.yml        # Local dev: Postgres + Redis + API
 ├── .env.example              # Copy to .env, fill in API key
-├── Makefile                  # make dev / test / unit-test / logs / clean
+├── Makefile                  # make demo / test / dev / smoke / logs / clean
 ├── .github/
 │   └── workflows/ci.yml      # CI: unit tests + Docker build on every push
 └── backend/
@@ -398,9 +412,10 @@ smart-router/
 ## Commands
 
 ```bash
-make dev          # build and start everything (Postgres + Redis + API)
-make unit-test    # run unit tests locally (no services needed)
-make test         # end-to-end smoke tests against all endpoints
+make demo         # demo mode in a local .venv (no Docker, no key)
+make test         # run unit tests locally (no services needed); also: make unit-test
+make dev          # build and start everything with Docker (Postgres + Redis + API)
+make smoke        # end-to-end smoke tests against a running server
 make logs         # tail API logs
 make stop         # stop containers (keep data)
 make clean        # stop + wipe database
