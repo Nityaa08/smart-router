@@ -30,7 +30,7 @@ With Docker (Postgres + Redis + a real provider): `cp .env.example .env`, set a 
 |---|---|
 | **Problem** | Apps send every prompt to one expensive model, including "what is 2+2?". Most prompts don't need it. |
 | **What I built** | A drop-in, OpenAI-compatible gateway. Rules score each prompt in under a millisecond, the cheapest tier that fits answers, a failing provider falls back to the next tier, and every request is logged with its cost. |
-| **Proof** | 23 of 24 hand-labelled prompts reach the labelled tier ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with a confusion matrix). 139 unit tests, CI on every push. |
+| **Proof** | 23 of 24 hand-labelled prompts reach the labelled tier ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with a confusion matrix). 146 unit tests, CI on every push. |
 | **Engineering** | FastAPI, async httpx, Pydantic, Redis cache, Postgres with Alembic, SSE streaming, rate limiting per API key, Docker, GitHub Actions. |
 
 ## The Problem
@@ -58,7 +58,7 @@ flowchart LR
     L --> A[/analytics<br/>cost vs GPT-4o/]
 ```
 
-Each tier maps to a model you set in `.env`. **About the savings number:** it compares the price-table cost of the model used with GPT-4o list prices for the same token counts. It is not a measured saving — see [Known Limitations](#known-limitations-checked-2026-11-14).
+Each tier maps to a model you set in `.env`. **About the savings number:** it compares the price-table cost of the model used with GPT-4o list prices for the same token counts. It is not a measured saving — see [Known Limitations](#known-limitations-checked-2026-11-15).
 
 ---
 
@@ -119,7 +119,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **139 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **146 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -192,7 +192,7 @@ No LLM is called for classification. A scoring function evaluates signals in <1m
 
 | Signal | Points |
 |---|---|
-| Simple keywords: "what is", "define", "translate", "summarize", "who is" | −1 each, at most −2 |
+| Simple keywords: "what is", "define", "translate", "summarize", "who is" | −1 each, at most −2; not counted when the prompt also has a complex keyword or code |
 | Medium keywords: "explain", "compare", "analyze", "write a" | +1 each, at most +3 |
 | Complex keywords: "implement", "debug", "refactor", "prove", "algorithm" | +2 each, at most +4 |
 | Code patterns (` ``` `, `def`, `class`, `function f(`) | +2 |
@@ -294,7 +294,7 @@ make test
 make smoke
 ```
 
-The unit test suite has 139 tests (64 classifier, 22 config/cost/default-model, 31 API, 16 demo mode, 6 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 146 tests (71 classifier, 22 config/cost/default-model, 31 API, 16 demo mode, 6 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make smoke` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make smoke ROUTER_API_KEY=your-key`.
 
@@ -359,10 +359,12 @@ On 2026-11-02 streaming and the rate limit were checked against the same fake se
 
 ---
 
-## Known Limitations (checked 2026-11-14)
+## Known Limitations (checked 2026-11-15)
+
+Fixed on 2026-11-15: a simple keyword cancelled a harder one, so "What is a closure? Implement one in JavaScript." scored −1 + 2 = 1 and went to `simple`. Simple keywords now lower the score only when the prompt has no complex keyword and no code; when they are skipped, `/v1/route/explain` lists them with 0 points and says why. The routing eval is unchanged at 23 of 24, because none of the labelled prompts mixes the two.
 
 - **Savings are an estimate, not a measurement.** `cost_saved` prices the tokens the chosen model used at GPT-4o list prices (from `config.py`) and subtracts the chosen model's price. Answer quality is not compared, and there is no evaluation set yet. The small-model prices for local Ollama models are assumptions.
-- **The classifier is unvalidated.** It uses hand-written keyword rules, checked only against 24 hand-labelled prompts (23 match, see [Routing eval](#routing-eval)) that it was tuned on, not a held-out evaluation set. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`, and a simple keyword cancels a harder one ("What is a closure? Implement one in JavaScript." stays `simple`). Keywords are matched anywhere in the text, with no sense of meaning.
+- **The classifier is unvalidated.** It uses hand-written keyword rules, checked only against 24 hand-labelled prompts (23 match, see [Routing eval](#routing-eval)) that it was tuned on, not a held-out evaluation set. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`. A factual question that mentions a math word still goes to `simple` on purpose ("What is the time complexity of binary search?" scores 1), so a question that only mentions a hard topic is not escalated, while one that asks for code or a complex task is. Keywords are matched anywhere in the text, with no sense of meaning.
 - **Streaming is simpler than the non-streaming path.** Streamed requests fall back to the next tier only before their first chunk (a provider that fails mid-stream reports the error in the stream). They are not cached. They are logged to `/analytics`, but the providers' streams carry no token usage, so their tokens and cost are estimated at about 4 characters per token from the prompt and the streamed text, and their latency is the time until the stream ended. A stream that stops early (provider error or client disconnect) is logged with status `stream_incomplete` and the text sent so far. In demo mode a streamed answer is therefore priced lower than the same answer non-streamed, which uses a typical answer length per tier.
 - **Authentication is one optional shared key.** With `ROUTER_API_KEY` unset (the default, for local dev) any client that can reach the server can send requests. There are no per-user keys or quotas. `/health` and the dashboard page stay public. CORS defaults to `*`.
 - **Rate-limit counts are only shared when Redis is used.** Limits are per API key (or per IP when no key is sent). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process.
@@ -422,7 +424,7 @@ smart-router/
     ├── alembic.ini
     ├── migrations/           # Alembic schema migrations
     ├── tests/
-    │   ├── test_classifier.py  # 64 classifier tests, incl. the 24 hand-labelled prompts
+    │   ├── test_classifier.py  # 71 classifier tests, incl. the 24 hand-labelled prompts
     │   ├── test_config.py      # 22 config/cost/default-model tests
     │   ├── test_api.py         # 31 chat-endpoint tests with fake providers
     │   ├── test_demo.py        # 16 demo-mode tests

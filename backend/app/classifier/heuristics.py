@@ -5,6 +5,9 @@ No LLM calls — pure rule-based scoring.
 The score measures complexity: signals of a harder prompt add points, and
 "simple" keywords ("what is", "define", ...) take points away, so a prompt
 made of several simple questions stays simple instead of climbing a tier.
+They only take points away when the prompt asks for no hard work (no complex
+keyword and no code): "What is a closure? Implement one in JavaScript." is a
+coding task framed by a question, and the question must not cancel it.
 """
 import re
 from dataclasses import dataclass, field
@@ -85,7 +88,8 @@ def classify(messages: list[dict]) -> ClassifierResult:
     Score a conversation and return its complexity tier.
 
     Scoring rules:
-      -1  each simple keyword ("what is", "define", ...), at most -2
+      -1  each simple keyword ("what is", "define", ...), at most -2,
+          only when no complex keyword or code pattern is present
       +1  each medium keyword ("explain", "compare", ...), at most +3
       +2  each complex keyword ("implement", "debug", ...), at most +4
       +2  code patterns detected
@@ -115,14 +119,25 @@ def classify(messages: list[dict]) -> ClassifierResult:
     simple_hits = _matches_any(full_text, SIMPLE_KEYWORDS)
     medium_hits = _matches_any(full_text, MEDIUM_KEYWORDS)
     complex_keyword_hits = _matches_any(full_text, COMPLEX_KEYWORDS)
+    has_code = bool(_matches_any(full_text, CODE_PATTERNS))
 
-    add("simple keywords", -min(simple_hits, 2), f"{simple_hits} matched, e.g. 'what is', 'define' (-1 each, max -2)")
+    # A simple framing ("what is ...") lowers the score only when nothing asks for hard
+    # work; otherwise one "what is" would cancel an "implement" and route a coding task
+    # to the smallest model.
+    if complex_keyword_hits or has_code:
+        if simple_hits:
+            signals.append(Signal("simple keywords", 0,
+                                  f"{simple_hits} matched but not counted: the prompt also asks for code "
+                                  f"or a complex task"))
+    else:
+        add("simple keywords", -min(simple_hits, 2),
+            f"{simple_hits} matched, e.g. 'what is', 'define' (-1 each, max -2)")
     add("medium keywords", min(medium_hits * 1, 3), f"{medium_hits} matched, e.g. 'explain', 'compare' (+1 each, max 3)")
     add("complex keywords", min(complex_keyword_hits * 2, 4),
         f"{complex_keyword_hits} matched, e.g. 'implement', 'debug' (+2 each, max 4)")
 
     # Code patterns
-    if _matches_any(full_text, CODE_PATTERNS):
+    if has_code:
         add("code", 2, "code fences or code keywords")
 
     # Multi-step

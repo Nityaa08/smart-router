@@ -251,6 +251,43 @@ class TestSimpleSignalsDoNotEscalate:
         assert any(s.name == "code" for s in code.signals)
 
 
+# ─── A simple framing must not cancel a request for hard work ─────────────────
+
+class TestSimpleFramingDoesNotCancelHardWork:
+    """'What is a closure? Implement one in JavaScript.' scored -1 + 2 = 1 and went
+    to the simple tier: one 'what is' cancelled the 'implement'."""
+
+    @pytest.mark.parametrize("prompt", [
+        "What is a closure? Implement one in JavaScript.",
+        "What is a trie? Implement it in Go.",
+        "Define a binary heap and implement insert",
+        "What is wrong here? def f(x): return x +",
+    ])
+    def test_coding_task_with_a_simple_question_is_not_simple(self, prompt):
+        result = classify([{"role": "user", "content": prompt}])
+        assert result.tier != "simple", (prompt, result.signals)
+
+    def test_closure_example_scores_like_implement_alone(self):
+        framed = classify([{"role": "user", "content": "What is a closure? Implement one in JavaScript."}])
+        bare = classify([{"role": "user", "content": "Implement a closure in JavaScript."}])
+        assert framed.score == bare.score == 2
+        assert framed.tier == "medium"
+
+    def test_ignored_simple_keywords_are_shown_with_zero_points(self):
+        result = classify([{"role": "user", "content": "What is a closure? Implement one in JavaScript."}])
+        simple = [s for s in result.signals if s.name == "simple keywords"]
+        assert len(simple) == 1 and simple[0].points == 0
+        assert "not counted" in simple[0].detail
+
+    def test_simple_keywords_still_offset_medium_and_math_signals(self):
+        # Only complex keywords and code switch the discount off; an explanation
+        # request or a word like "complexity" in a factual question does not.
+        medium = classify([{"role": "user", "content": "What is DNS? Explain briefly."}])
+        assert medium.score == 0 and medium.tier == "simple"
+        math = classify([{"role": "user", "content": "What is the time complexity of binary search?"}])
+        assert math.score == 1 and math.tier == "simple"
+
+
 # ─── Hand-labelled prompts ───────────────────────────────────────────────────
 from app.evals.labelled import LABELLED as _LABELLED, KNOWN_MISSES  # noqa: E402
 # A small regression set with labels written by hand: 8 prompts per tier. It is
