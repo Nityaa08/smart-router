@@ -1,9 +1,10 @@
-"""The routing eval: the report over the hand-labelled prompts and GET /v1/route/eval."""
+"""The routing eval: the report over the hand-labelled prompts (tuning and held-out) and GET /v1/route/eval."""
 import pytest
 from fastapi.testclient import TestClient
 
 from app.evals.labelled import LABELLED, KNOWN_MISSES
-from app.evals.routing import run_routing_eval, TIERS
+from app.evals.held_out import HELD_OUT
+from app.evals.routing import run_routing_eval, run_full_eval, TIERS
 from app.main import app
 from app.config import get_settings
 from app.router import engine
@@ -63,3 +64,45 @@ def test_endpoint_serves_the_report(monkeypatch):
     assert body["correct"] == 23 and body["total"] == 24
     assert set(body["confusion"]) == set(TIERS)
     assert "not a held-out" in body["caveat"]
+    held = body["held_out"]
+    assert held["correct"] == 10 and held["total"] == 24
+    assert "not changed to fit them" in held["caveat"]
+
+
+# ── held-out set: prompts the rules were not tuned on ────────────────────────
+
+@pytest.fixture(scope="module")
+def held_out():
+    return run_full_eval(MODELS)["held_out"]
+
+
+def test_held_out_set_is_balanced_and_separate_from_the_tuning_set():
+    assert len(HELD_OUT) == 24
+    for tier in TIERS:
+        assert sum(exp == tier for exp, _ in HELD_OUT) == 8
+    tuned = {p.lower() for _, p in LABELLED}
+    assert not tuned & {p.lower() for _, p in HELD_OUT}
+
+
+def test_held_out_result_is_10_of_24_and_every_miss_routes_too_low(held_out):
+    # Recorded on 2026-11-17, the first time the classifier saw these prompts.
+    # If a rule change moves this number, update it here and in the README;
+    # never edit or relabel a held-out prompt to make it go up.
+    assert held_out["correct"] == 10
+    assert held_out["accuracy"] == pytest.approx(10 / 24, abs=1e-4)
+    assert held_out["routed_too_low"] == 14 and held_out["routed_too_high"] == 0
+    c = held_out["confusion"]
+    assert c["simple"] == {"simple": 8, "medium": 0, "complex": 0}
+    assert c["medium"] == {"simple": 8, "medium": 0, "complex": 0}
+    assert c["complex"] == {"simple": 4, "medium": 2, "complex": 2}
+
+
+def test_held_out_misses_carry_no_tuning_set_notes(held_out):
+    # KNOWN_MISSES indexes the tuning set; it must not label held-out rows.
+    assert all(m["note"] is None for m in held_out["misses"])
+
+
+def test_the_tuning_set_report_is_unchanged_by_the_held_out_set():
+    full = run_full_eval(MODELS)
+    alone = run_routing_eval(MODELS)
+    assert {k: v for k, v in full.items() if k != "held_out"} == alone

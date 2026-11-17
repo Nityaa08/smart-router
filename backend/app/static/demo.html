@@ -319,7 +319,7 @@ footer .mono{font-size:12px}
         <dl class="facts">
           <div><dt>Problem</dt><dd>Apps send every prompt to one expensive model, even <b>“what is 2+2?”</b>. Most prompts don’t need it.</dd></div>
           <div><dt>What I built</dt><dd>A drop-in <b>OpenAI-compatible gateway</b> that scores each prompt with rules in under 1 ms, picks the cheapest tier that fits, falls back if a provider fails, and logs the cost.</dd></div>
-          <div><dt>Proof</dt><dd><b id="bf-acc">23 of 24</b> hand-labelled prompts routed to the right tier, <b>138</b> tests, CI on every push. The one miss is shown, not hidden.</dd></div>
+          <div><dt>Proof</dt><dd><b id="bf-held">10 of 24</b> held-out prompts routed to the right tier (<b id="bf-acc">23 of 24</b> on the prompts the rules were tuned on), <b>150</b> tests, CI on every push. The misses are shown, not hidden.</dd></div>
         </dl>
         <div class="tour" role="group" aria-label="Try it">
           <span class="lbl">Try it</span>
@@ -716,6 +716,8 @@ print(r.headers["x-router-tier"], r.headers["x-router-model"])
   });
   fetch("/v1/route/eval").then(r => r.json()).then(ev => {
     $("bf-acc").textContent = `${ev.correct} of ${ev.total}`;
+    const ho = ev.held_out;
+    if (ho) $("bf-held").textContent = `${ho.correct} of ${ho.total}`;
     const cells = TIERS.map(exp => `<span class="rh">${exp}</span>` + TIERS.map(got => {
       const n = ev.confusion[exp][got];
       const cls = exp === got ? "c hit" : n ? "c miss" : "c";
@@ -726,11 +728,15 @@ print(r.headers["x-router-tier"], r.headers["x-router-model"])
     const c = ev.cost, max = c.baseline_usd_per_1k_runs || 1;
     const bar = (cls, name, v) => `<div class="${cls}"><span>${name}</span><i style="width:${Math.max(2, v / max * 100)}%"></i><em>${usd(v)}</em></div>`;
     $("rc").innerHTML =
-      `<div class="card-top"><span class="big">${ev.correct}<small>/${ev.total}</small></span><p>prompts routed to the tier a person labelled them (${Math.round(ev.accuracy * 100)}%). ${ev.routed_too_low} sent too low, ${ev.routed_too_high} too high.</p></div>` +
+      `<div class="card-top"><span class="big">${ev.correct}<small>/${ev.total}</small></span><p><b>Tuning prompts</b> routed to the tier a person labelled them (${Math.round(ev.accuracy * 100)}%). ${ev.routed_too_low} sent too low, ${ev.routed_too_high} too high.</p></div>` +
       `<div class="cm" role="table" aria-label="Confusion matrix: labelled tier by row, routed tier by column"><span></span>${TIERS.map(t => `<span>${t}</span>`).join("")}${cells}</div>` +
       `<p class="cmcap">rows: labelled · columns: routed</p>` + miss +
       `<div class="costs" aria-label="Prompt cost of the 24 prompts, per 1,000 runs">${bar("r", "routed", c.routed_usd_per_1k_runs)}${bar("", "all on complex", c.all_complex_usd_per_1k_runs)}${bar("", c.baseline_model, c.baseline_usd_per_1k_runs)}</div>` +
-      `<p class="fine">Cost of the set's prompt tokens per 1,000 runs, at list prices. The rules were tuned with these prompts in view, so this is a regression check, not a held-out accuracy.</p>`;
+      `<p class="fine">Cost of the set's prompt tokens per 1,000 runs, at list prices. The rules were tuned with these prompts in view, so this is a regression check, not a held-out accuracy.</p>` +
+      (ho ? `<div class="card-top" style="margin-top:18px"><span class="big">${ho.correct}<small>/${ho.total}</small></span><p><b>Held-out prompts</b>, which the rules were never tuned on (${Math.round(ho.accuracy * 100)}%). ${ho.routed_too_low} sent too low, ${ho.routed_too_high} too high. This is the number to quote: the keyword rules only know the words they list.</p></div>` +
+        `<div class="cm" role="table" aria-label="Held-out confusion matrix: labelled tier by row, routed tier by column"><span></span>${TIERS.map(t => `<span>${t}</span>`).join("")}${TIERS.map(exp => `<span class="rh">${exp}</span>` + TIERS.map(got => { const n = ho.confusion[exp][got]; return `<span class="${exp === got && n ? "c hit" : n ? "c miss" : "c"}"${exp === got && n ? ` style="background:${COLOR[got]};border-color:${COLOR[got]}"` : ""}>${n}</span>`; }).join("")).join("")}</div>` +
+        `<p class="cmcap">rows: labelled · columns: routed</p>` +
+        `<details><summary class="fine">The ${ho.misses.length} held-out misses</summary>${ho.misses.map(m => `<p class="missline"><code>${esc(m.prompt)}</code> is labelled ${m.expected} but scores ${m.score}, so it goes to ${m.routed}.</p>`).join("")}</details>` : "");
   }).catch(() => { $("rc").innerHTML = `<p class="muted">Could not load the report card.</p>`; });
   $("form").addEventListener("submit", send);
   preview();

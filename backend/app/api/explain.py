@@ -1,6 +1,6 @@
 """
 POST /v1/route/explain: how the classifier scores a prompt, without calling any model.
-GET /v1/route/eval: the classifier over the hand-labelled prompts.
+GET /v1/route/eval: the classifier over the hand-labelled prompts (tuning and held-out sets).
 
 The demo page uses it to show which rules fired, and the same numbers can be
 used to check routing decisions offline.
@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from ..classifier.heuristics import classify
 from ..config import get_settings, calculate_cost, BASELINE_MODEL, MODEL_PRICING
 from ..router.engine import get_providers, TIER_ESCALATION
-from ..evals.routing import run_routing_eval
+from ..evals.routing import run_full_eval
 from ..security import limiter, rate_limit, require_api_key
 from .chat import prompt_too_long
 from ..schemas.request import Message
@@ -70,6 +70,9 @@ async def explain(body: ExplainRequest, request: Request):
 @router.get("/v1/route/eval")
 @limiter.limit(rate_limit)
 async def routing_eval(request: Request):
-    """The classifier over the hand-labelled prompts: accuracy, confusion matrix, misses, cost."""
+    """The classifier over the hand-labelled prompts: accuracy, confusion matrix, misses, cost.
+
+    The top level is the tuning set; "held_out" is the set the rules were not tuned on.
+    """
     providers = get_providers()
-    return run_routing_eval({t: providers[t].model_name for t in TIER_ESCALATION})
+    return run_full_eval({t: providers[t].model_name for t in TIER_ESCALATION})
