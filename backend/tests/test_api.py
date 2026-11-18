@@ -131,6 +131,36 @@ class TestChat:
         assert r.status_code == 503
 
 
+class TestRequestBounds:
+    """Requests a provider would refuse are rejected with 422 before any tier is called.
+
+    Before, they passed validation, every tier was tried (a provider's 400 counts as a
+    failure, so the router escalated up to the most expensive model) and the client got a
+    503 saying the providers were down.
+    """
+
+    @pytest.mark.parametrize("body", [
+        {"messages": []},
+        {"messages": [{"role": "user", "content": "hi"}], "temperature": 5},
+        {"messages": [{"role": "user", "content": "hi"}], "temperature": -0.1},
+        {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 0},
+        {"messages": [{"role": "user", "content": "hi"}], "max_tokens": -1},
+        {"messages": [], "stream": True},
+        {"messages": [{"role": "user", "content": "hi"}], "temperature": 3, "stream": True},
+    ])
+    def test_rejected_with_422_and_no_provider_called(self, client, providers, logged, body):
+        r = client.post("/v1/chat/completions", json=body)
+        assert r.status_code == 422
+        assert all(p.calls == 0 for p in providers.values())
+        assert logged == []
+
+    @pytest.mark.parametrize("extra", [
+        {"temperature": 0}, {"temperature": 2}, {"max_tokens": 1}, {"temperature": 1.3, "max_tokens": 64},
+    ])
+    def test_values_at_the_bounds_are_accepted(self, client, extra):
+        assert chat(client, **extra).status_code == 200
+
+
 class TestLoggedTier:
     """/analytics groups cost by the logged tier, so it must be the tier whose model answered."""
 

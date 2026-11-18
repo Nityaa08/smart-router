@@ -30,7 +30,7 @@ With Docker (Postgres + Redis + a real provider): `cp .env.example .env`, set a 
 |---|---|
 | **Problem** | Apps send every prompt to one expensive model, including "what is 2+2?". Most prompts don't need it. |
 | **What I built** | A drop-in, OpenAI-compatible gateway. Rules score each prompt in under a millisecond, the cheapest tier that fits answers, a failing provider falls back to the next tier, and every request is logged with its cost. |
-| **Proof** | 10 of 24 held-out prompts reach the labelled tier, and 23 of 24 of the prompts the rules were tuned on ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with confusion matrices). Every held-out miss goes too low. 150 unit tests, CI on every push. |
+| **Proof** | 10 of 24 held-out prompts reach the labelled tier, and 23 of 24 of the prompts the rules were tuned on ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with confusion matrices). Every held-out miss goes too low. 161 unit tests, CI on every push. |
 | **Engineering** | FastAPI, async httpx, Pydantic, Redis cache, Postgres with Alembic, SSE streaming, rate limiting per API key, Docker, GitHub Actions. |
 
 ## The Problem
@@ -119,7 +119,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **150 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **161 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth, request bounds) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -309,7 +309,7 @@ make test
 make smoke
 ```
 
-The unit test suite has 150 tests (71 classifier, 22 config/cost/default-model, 31 API, 16 demo mode, 10 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 161 tests (71 classifier, 22 config/cost/default-model, 42 API, 16 demo mode, 10 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make smoke` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make smoke ROUTER_API_KEY=your-key`.
 
@@ -374,7 +374,9 @@ On 2026-11-02 streaming and the rate limit were checked against the same fake se
 
 ---
 
-## Known Limitations (checked 2026-11-17)
+## Known Limitations (checked 2026-11-18)
+
+Fixed on 2026-11-18: a request a provider would refuse (no messages, `temperature` outside 0 to 2, `max_tokens` below 1) passed validation, was tried on every tier up to the most expensive model, and came back as a 503 saying the providers were down. It now gets a 422 naming the field, before any provider is called.
 
 Fixed on 2026-11-15: a simple keyword cancelled a harder one, so "What is a closure? Implement one in JavaScript." scored −1 + 2 = 1 and went to `simple`. Simple keywords now lower the score only when the prompt has no complex keyword and no code; when they are skipped, `/v1/route/explain` lists them with 0 points and says why. The routing eval is unchanged at 23 of 24, because none of the labelled prompts mixes the two.
 
@@ -384,6 +386,7 @@ Fixed on 2026-11-15: a simple keyword cancelled a harder one, so "What is a clos
 - **Authentication is one optional shared key.** With `ROUTER_API_KEY` unset (the default, for local dev) any client that can reach the server can send requests. There are no per-user keys or quotas. `/health` and the dashboard page stay public. CORS defaults to `*`.
 - **Rate-limit counts are only shared when Redis is used.** Limits are per API key (or per IP when no key is sent). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process.
 - **Default cloud model IDs will go out of date again.** The defaults were checked on 2026-11-02 against [Groq's model list](https://console.groq.com/docs/models) and [OpenRouter's free-model list](https://openrouter.ai/api/v1/models?max_price=0). Free OpenRouter models in particular are added and removed often. If you change models, add paid ones to `MODEL_PRICING`: unknown models are priced as GPT-4o (no saving shown); any `:free` model is priced at 0.
+- **Any provider error triggers fallback.** A provider's 4xx for a reason the router does not check (a prompt longer than the model's context window, a model that refuses a parameter) is treated like an outage: the next tier is tried and, if all refuse, the client gets a 503. Only the bounds above are checked up front.
 - **Prices are hard-coded** in `config.py` (Groq prices checked 2026-11-02).
 - **The live demo shows the pipeline, not model quality.** In demo mode answers are simulated and token counts are estimated, so its cost figures illustrate the pricing logic only. Its `/analytics` numbers live in one serverless instance's memory and reset when the instance is recycled, and its rate limit is counted per instance.
 
