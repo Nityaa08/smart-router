@@ -30,7 +30,7 @@ With Docker (Postgres + Redis + a real provider): `cp .env.example .env`, set a 
 |---|---|
 | **Problem** | Apps send every prompt to one expensive model, including "what is 2+2?". Most prompts don't need it. |
 | **What I built** | A drop-in, OpenAI-compatible gateway. Rules score each prompt in under a millisecond, the cheapest tier that fits answers, a failing provider falls back to the next tier, and every request is logged with its cost. |
-| **Proof** | 10 of 24 held-out prompts reach the labelled tier, and 23 of 24 of the prompts the rules were tuned on ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with confusion matrices). Every held-out miss goes too low. 161 unit tests, CI on every push. |
+| **Proof** | 10 of 24 held-out prompts reach the labelled tier, and 23 of 24 of the prompts the rules were tuned on ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with confusion matrices). Every held-out miss goes too low. 170 unit tests, CI on every push. |
 | **Engineering** | FastAPI, async httpx, Pydantic, Redis cache, Postgres with Alembic, SSE streaming, rate limiting per API key, Docker, GitHub Actions. |
 
 ## The Problem
@@ -119,7 +119,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **161 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth, request bounds) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **170 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth, request bounds, text content parts) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -256,6 +256,8 @@ OpenAI-compatible chat endpoint.
 }
 ```
 
+`content` may also be OpenAI's list form, `[{"type": "text", "text": "..."}]`, which the OpenAI SDK and many clients send: text parts are joined with a newline and routed, cached and sent on exactly like the same string. Image or audio parts get a 422 saying only text is supported (until 2026-11-19 any list was a 422).
+
 `"stream": true` returns OpenAI-style `chat.completion.chunk` Server-Sent Events ending in `data: [DONE]`, with the `X-Router-Tier` and `X-Router-Model` headers. If a provider fails before its first chunk, the stream falls back to the next tier up, like non-streamed requests, and `X-Router-Fallback: true` says so. Only if every tier fails is the response HTTP 503. Streamed requests are logged to `/analytics` when the stream ends, with estimated token counts, and are not cached (see Known Limitations).
 
 If `ROUTER_API_KEY` is set, send `Authorization: Bearer <key>` (or `X-API-Key: <key>`); otherwise the response is HTTP 401. Requests over `RATE_LIMIT` get HTTP 429. The limit counts per API key when one is sent (hashed, never stored raw), otherwise per client IP.
@@ -309,7 +311,7 @@ make test
 make smoke
 ```
 
-The unit test suite has 161 tests (71 classifier, 22 config/cost/default-model, 42 API, 16 demo mode, 10 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 170 tests (71 classifier, 22 config/cost/default-model, 51 API, 16 demo mode, 10 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make smoke` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make smoke ROUTER_API_KEY=your-key`.
 

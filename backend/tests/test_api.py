@@ -21,6 +21,7 @@ class FakeProvider(LLMProvider):
         self.fail = fail
         self.chunks = chunks
         self.calls = 0
+        self.last_messages = None
 
     @property
     def model_name(self) -> str:
@@ -32,6 +33,7 @@ class FakeProvider(LLMProvider):
 
     async def complete(self, messages, temperature=0.7, max_tokens=None):
         self.calls += 1
+        self.last_messages = messages
         if self.fail:
             raise ConnectionError("provider down")
         return LLMResponse(
@@ -159,6 +161,47 @@ class TestRequestBounds:
     ])
     def test_values_at_the_bounds_are_accepted(self, client, extra):
         assert chat(client, **extra).status_code == 200
+
+
+class TestContentParts:
+    """OpenAI's list form of content: [{"type": "text", "text": "..."}].
+
+    The OpenAI SDK and many clients send it; it used to be a 422, so those clients
+    could not use the gateway at all.
+    """
+
+    def test_text_parts_are_accepted_and_joined(self, client, providers):
+        content = [{"type": "text", "text": "What is"}, {"type": "text", "text": "2+2?"}]
+        r = chat(client, content=content)
+        assert r.status_code == 200
+        assert providers["simple"].last_messages == [{"role": "user", "content": "What is\n2+2?"}]
+
+    def test_parts_route_like_the_same_text(self, client):
+        prompt = "Design a distributed rate limiter with consistent hashing and explain the trade-offs."
+        as_string = chat(client, content=prompt).headers["x-router-tier"]
+        as_parts = chat(client, content=[{"type": "text", "text": prompt}]).headers["x-router-tier"]
+        assert as_parts == as_string
+
+    def test_parts_work_when_streaming(self, client):
+        r = chat(client, content=[{"type": "text", "text": "hi"}], stream=True)
+        assert r.status_code == 200
+
+    @pytest.mark.parametrize("content", [
+        [],
+        [{"type": "image_url", "image_url": {"url": "https://example.com/a.png"}}],
+        [{"type": "text"}],
+        [{"type": "text", "text": 5}],
+        ["just a string in a list"],
+    ])
+    def test_unusable_parts_get_422_and_no_provider_call(self, client, providers, logged, content):
+        r = chat(client, content=content)
+        assert r.status_code == 422
+        assert all(p.calls == 0 for p in providers.values())
+        assert logged == []
+
+    def test_image_part_error_says_why(self, client):
+        r = chat(client, content=[{"type": "image_url", "image_url": {"url": "x"}}])
+        assert "only text content parts are supported" in r.text
 
 
 class TestLoggedTier:
