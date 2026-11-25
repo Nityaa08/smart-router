@@ -2,12 +2,15 @@
 
 # ── Local, no Docker ─────────────────────────────────────────────────────────
 # Python 3.12 is preferred: the pinned asyncpg 0.29 does not build on 3.13.
-PYTHON ?= $(shell command -v python3.12 || command -v python3.11 || command -v python3)
+# On 3.13 `make install` would fail half way with a C build error, so stop early instead.
+PYTHON ?= $(shell command -v python3.12 || command -v python3.11)
 VENV = .venv
 BIN = $(CURDIR)/$(VENV)/bin
 PORT ?= 8000
 
 $(VENV)/.installed: backend/requirements.txt
+	@test -n "$(PYTHON)" || { echo "Python 3.12 (or 3.11) is needed: the pinned asyncpg does not build on 3.13."; \
+	  echo "Install it (e.g. 'brew install python@3.12' or 'pyenv install 3.12'), or run: make PYTHON=/path/to/python3.12 demo"; exit 1; }
 	$(PYTHON) -m venv $(VENV)
 	$(BIN)/pip install -q --upgrade pip
 	$(BIN)/pip install -q -r backend/requirements.txt pytest
