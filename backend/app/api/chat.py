@@ -113,8 +113,10 @@ async def chat_completions(body: ChatRequest, request: Request):
     except RuntimeError as e:
         return _err(503, str(e))
     except Exception as e:
+        # The exception text can name hosts and ports (a Redis or database URL), so it
+        # goes to the server log only.
         logger.exception("Unexpected error in route()")
-        return _err(500, f"Internal error: {e}")
+        return _err(500, "Internal error; the details are in the server log")
 
     response_body = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",

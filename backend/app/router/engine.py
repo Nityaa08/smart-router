@@ -23,6 +23,25 @@ from . import memlog
 
 logger = logging.getLogger(__name__)
 
+
+# The cache is an optimisation, so a Redis failure (it went away after startup, a
+# timeout) is logged and treated as a miss. Before 2026-11-25 it raised, so every
+# chat request returned 500 while Redis was down, and a failed store threw away a
+# provider answer that had already been paid for.
+async def _cache_get(redis_client, key: str):
+    try:
+        return await redis_client.get(key)
+    except Exception:
+        logger.warning("Cache read failed; answering without the cache", exc_info=True)
+        return None
+
+
+async def _cache_set(redis_client, key: str, value: str) -> None:
+    try:
+        await redis_client.setex(key, 3600, value)
+    except Exception:
+        logger.warning("Cache write failed; the answer is returned but not cached", exc_info=True)
+
 Tier = Literal["simple", "medium", "complex"]
 
 
@@ -198,7 +217,7 @@ async def route(
 
     # ── Cache check ──────────────────────────────────────────────────────────
     if redis_client:
-        cached = await redis_client.get(cache_key)
+        cached = await _cache_get(redis_client, cache_key)
         if cached:
             data = json.loads(cached)
             logger.info("Cache hit for hash %s", phash[:8])
@@ -306,7 +325,7 @@ async def route(
             "baseline_cost": baseline_cost,
             "cost_saved": cost_saved,
         })
-        await redis_client.setex(cache_key, 3600, cache_data)
+        await _cache_set(redis_client, cache_key, cache_data)
 
     return RouterResult(
         response=response,

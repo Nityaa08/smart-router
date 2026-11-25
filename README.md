@@ -30,7 +30,7 @@ With Docker (Postgres + Redis + a real provider): `cp .env.example .env`, set a 
 |---|---|
 | **Problem** | Apps send every prompt to one expensive model, including "what is 2+2?". Most prompts don't need it. |
 | **What I built** | A drop-in, OpenAI-compatible gateway. Rules score each prompt in under a millisecond, the cheapest tier that fits answers, a failing provider falls back to the next tier, and every request is logged with its cost. |
-| **Proof** | 10 of 24 held-out prompts reach the labelled tier, and 23 of 24 of the prompts the rules were tuned on ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with confusion matrices). Every held-out miss goes too low. 172 unit tests, CI on every push. |
+| **Proof** | 10 of 24 held-out prompts reach the labelled tier, and 23 of 24 of the prompts the rules were tuned on ([routing eval](#routing-eval), served live at `/v1/route/eval` and shown on the demo page as a report card with confusion matrices). Every held-out miss goes too low. 177 unit tests, CI on every push. |
 | **Engineering** | FastAPI, async httpx, Pydantic, Redis cache, Postgres with Alembic, SSE streaming, rate limiting per client (or per API key), Docker, GitHub Actions. |
 
 ## The Problem
@@ -119,7 +119,7 @@ curl -X POST http://localhost:8000/v1/route/explain \
 | **Playground and dashboard** | `/` is a playground that shows each routing decision; `/dashboard` shows routing distribution and estimated cost |
 | **Optional API key** | Set `ROUTER_API_KEY` to require `Authorization: Bearer <key>` on the chat and analytics endpoints |
 | **Rate limit** | `RATE_LIMIT` per client IP on `POST /v1/chat/completions` (HTTP 429 when exceeded) |
-| **172 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth, request bounds, text content parts) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
+| **177 unit tests** | Classifier, the routing eval, cost calculation, the chat endpoint (routing, fallback, streaming, cache, rate limit, auth, request bounds, text content parts) with fake providers, and the demo mode (demo provider, in-memory log, explain endpoint, guards) |
 
 ---
 
@@ -311,7 +311,7 @@ make test
 make smoke
 ```
 
-The unit test suite has 172 tests (71 classifier, 22 config/cost/default-model, 53 API, 16 demo mode, 10 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
+The unit test suite has 177 tests (71 classifier, 22 config/cost/default-model, 58 API, 16 demo mode, 10 routing eval; one classifier test is a known miss marked as an expected failure) with zero external dependencies: the API tests replace the LLM providers, Redis and the Postgres logger with in-memory fakes. Line coverage on 2026-11-02: 100% of `classifier/heuristics.py`, `config.py` and `security.py`, 87% of `api/chat.py`, 81% of `router/engine.py`, 71% of the app overall. The provider HTTP clients and `/analytics` SQL are not unit-tested; the fake-model run below covers them end to end.
 
 `make smoke` prints the HTTP status and the `x-router-tier` / `x-router-model` headers. If you set `ROUTER_API_KEY`, run `make smoke ROUTER_API_KEY=your-key`.
 
@@ -386,7 +386,7 @@ Fixed on 2026-11-15: a simple keyword cancelled a harder one, so "What is a clos
 - **The classifier routes most medium and complex prompts too low.** It uses hand-written keyword rules. On 24 held-out prompts it was not tuned on, 10 reach the labelled tier (42%): every simple prompt is right, but all 8 medium prompts and 6 of 8 complex ones go too low, never too high (see [Routing eval](#routing-eval)). On the 24 prompts it was tuned on, 23 match. Both sets are small and labelled by one person. Known misses: a request with a single medium keyword ("Analyze the pros and cons of remote work") scores 1 and goes to `simple`. A factual question that mentions a math word still goes to `simple` on purpose ("What is the time complexity of binary search?" scores 1), so a question that only mentions a hard topic is not escalated, while one that asks for code or a complex task is. Keywords are matched anywhere in the text, with no sense of meaning.
 - **Streaming is simpler than the non-streaming path.** Streamed requests fall back to the next tier only before their first chunk (a provider that fails mid-stream reports the error in the stream). They are not cached. They are logged to `/analytics`, but the providers' streams carry no token usage, so their tokens and cost are estimated at about 4 characters per token from the prompt and the streamed text, and their latency is the time until the stream ended. A stream that stops early (provider error or client disconnect) is logged with status `stream_incomplete` and the text sent so far. In demo mode a streamed answer is therefore priced lower than the same answer non-streamed, which uses a typical answer length per tier.
 - **Authentication is one optional shared key.** With `ROUTER_API_KEY` unset (the default, for local dev) any client that can reach the server can send requests. There are no per-user keys or quotas. `/health` and the dashboard page stay public. CORS defaults to `*`.
-- **Rate-limit counts are only shared when Redis is used.** Limits are per client IP (or per the configured API key). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process.
+- **Rate-limit counts are only shared when Redis is used.** Limits are per client IP (or per the configured API key). With `RATE_LIMIT_STORAGE=memory://`, each process counts separately. Docker Compose points it at the bundled Redis, so all workers share one count; if Redis goes down, counting falls back to each process, and the response cache is skipped (a miss) rather than failing the request.
 - **Default cloud model IDs will go out of date again.** The defaults were checked on 2026-11-02 against [Groq's model list](https://console.groq.com/docs/models) and [OpenRouter's free-model list](https://openrouter.ai/api/v1/models?max_price=0). Free OpenRouter models in particular are added and removed often. If you change models, add paid ones to `MODEL_PRICING`: unknown models are priced as GPT-4o (no saving shown); any `:free` model is priced at 0.
 - **Any provider error triggers fallback.** A provider's 4xx for a reason the router does not check (a prompt longer than the model's context window, a model that refuses a parameter) is treated like an outage: the next tier is tried and, if all refuse, the client gets a 503. Only the bounds above are checked up front.
 - **Prices are hard-coded** in `config.py` (Groq prices checked 2026-11-02).
@@ -446,7 +446,7 @@ smart-router/
     ├── tests/
     │   ├── test_classifier.py  # 71 classifier tests, incl. the 24 hand-labelled prompts
     │   ├── test_config.py      # 22 config/cost/default-model tests
-    │   ├── test_api.py         # 53 chat-endpoint tests with fake providers
+    │   ├── test_api.py         # 58 chat-endpoint tests with fake providers
     │   ├── test_demo.py        # 16 demo-mode tests
     │   └── test_eval.py        # 10 routing-eval tests (tuning and held-out sets)
     └── app/

@@ -64,6 +64,16 @@ class FakeRedis:
         self.store[key] = value
 
 
+class BrokenRedis:
+    """Redis that went away after startup."""
+
+    async def get(self, key):
+        raise ConnectionError("Error 111 connecting to redis:6379. Connection refused.")
+
+    async def setex(self, key, ttl, value):
+        raise ConnectionError("Error 111 connecting to redis:6379. Connection refused.")
+
+
 @pytest.fixture
 def logged(monkeypatch):
     """Capture request-log rows instead of writing to Postgres."""
@@ -449,3 +459,54 @@ class TestAuth:
     def test_dashboard_page_is_public(self, client, settings):
         settings.router_api_key = "s3cret"
         assert client.get("/").status_code == 200
+
+
+# ─── Cache failures ───────────────────────────────────────────────────────────
+
+class TestCacheFailure:
+    def test_requests_still_work_when_redis_is_down(self, client):
+        # Before 2026-11-25 a Redis error after startup made every chat request a 500.
+        app.state.redis = BrokenRedis()
+        r = chat(client)
+        assert r.status_code == 200
+        assert r.json()["choices"][0]["message"]["content"] == "answer from small-model"
+        assert r.json()["router"]["from_cache"] is False
+
+    def test_a_failed_cache_write_still_returns_the_answer(self, client):
+        class WriteFails(FakeRedis):
+            async def setex(self, key, ttl, value):
+                raise TimeoutError("redis timeout")
+        app.state.redis = WriteFails()
+        assert chat(client).status_code == 200
+
+    def test_an_unexpected_error_does_not_leak_its_text(self, client, monkeypatch):
+        async def boom(*a, **k):
+            raise ValueError("could not connect to db.internal:5432: password authentication failed")
+        monkeypatch.setattr("app.api.chat.route", boom)
+        r = chat(client)
+        assert r.status_code == 500
+        assert "db.internal" not in r.text and "password" not in r.text
+
+
+class TestHealthDetails:
+    def test_health_does_not_show_the_database_error_text(self, client, monkeypatch):
+        from app import database
+
+        class BrokenEngine:
+            def connect(self):
+                raise OSError("could not reach db.internal:5432 as user admin")
+
+        monkeypatch.setattr(database, "engine", BrokenEngine())
+        r = client.get("/health")
+        assert r.status_code == 503
+        assert r.json()["db"] == "down (OSError)"
+        assert "db.internal" not in r.text
+
+    def test_ollama_hint_only_for_ollama(self, client, providers, settings, monkeypatch):
+        from app.api import health
+        providers["simple"].fail = True
+        monkeypatch.setattr(health, "get_providers", lambda: providers)
+        monkeypatch.setattr(settings, "provider", "groq")
+        assert "ollama pull" not in client.get("/health").json()["provider"]
+        monkeypatch.setattr(settings, "provider", "ollama")
+        assert "ollama pull small-model" in client.get("/health").json()["provider"]

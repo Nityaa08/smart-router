@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..router.engine import get_providers
@@ -5,6 +7,7 @@ from .. import database
 from ..config import get_settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
@@ -21,7 +24,9 @@ async def health():
                 await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
             results["db"] = "up"
         except Exception as e:
-            results["db"] = f"down: {e}"
+            # The driver's message can include the host, port and user; keep it in the log.
+            logger.warning("Health check: database unreachable: %s", e)
+            results["db"] = f"down ({type(e).__name__})"
             results["status"] = "degraded"
 
     # Check provider (also verifies models are pulled)
@@ -32,10 +37,12 @@ async def health():
             results["provider"] = "up"
         else:
             model = providers["simple"].model_name
-            results["provider"] = f"down — model '{model}' not found. Run: ollama pull {model}"
+            hint = f" Run: ollama pull {model}" if cfg.provider == "ollama" else ""
+            results["provider"] = f"down: model '{model}' did not answer the health check.{hint}"
             results["status"] = "degraded"
     except Exception as e:
-        results["provider"] = f"down: {e}"
+        logger.warning("Health check: provider check failed: %s", e)
+        results["provider"] = f"down ({type(e).__name__})"
         results["status"] = "degraded"
 
     status_code = 200 if results["status"] == "ok" else 503
