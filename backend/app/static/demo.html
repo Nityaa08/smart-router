@@ -319,7 +319,7 @@ footer .mono{font-size:12px}
         <dl class="facts">
           <div><dt>Problem</dt><dd>Apps send every prompt to one expensive model, even <b>“what is 2+2?”</b>. Most prompts don’t need it.</dd></div>
           <div><dt>What I built</dt><dd>A drop-in <b>OpenAI-compatible gateway</b> that scores each prompt with rules in under 1 ms, picks the cheapest tier that fits, falls back if a provider fails, and logs the cost.</dd></div>
-          <div><dt>Proof</dt><dd><b id="bf-held">10 of 24</b> held-out prompts routed to the right tier (<b id="bf-acc">23 of 24</b> on the prompts the rules were tuned on), <b>150</b> tests, CI on every push. The misses are shown, not hidden.</dd></div>
+          <div><dt>Proof</dt><dd><b id="bf-held">10 of 24</b> held-out prompts routed to the right tier (<b id="bf-acc">23 of 24</b> on the prompts the rules were tuned on), <b>172</b> tests, CI on every push. The misses are shown, not hidden.</dd></div>
         </dl>
         <div class="tour" role="group" aria-label="Try it">
           <span class="lbl">Try it</span>

@@ -35,14 +35,21 @@ def client_ip(request: Request) -> str:
     return get_remote_address(request)
 
 
+def _valid_key(supplied: str) -> bool:
+    expected = get_settings().router_api_key
+    return bool(expected and supplied) and secrets.compare_digest(supplied.encode(), expected.encode())
+
+
 def rate_limit_key(request: Request) -> str:
     """
-    Who a request counts against: the caller's API key if they sent one, otherwise their IP.
-    Keyed callers behind one proxy no longer share a limit. The key is hashed, so the raw
-    key never becomes a storage key.
+    Who a request counts against: the configured API key, if the caller sent it, otherwise
+    their IP. A key that is not ROUTER_API_KEY (or any key when none is configured) counts
+    against the IP: before 2026-11-25 every made-up key got a fresh limit, so sending
+    "X-API-Key: junk1", "junk2", ... skipped the public demo's rate limit entirely.
+    The key is hashed, so the raw key never becomes a storage key.
     """
     supplied = _supplied_key(request)
-    if supplied:
+    if _valid_key(supplied):
         return "key:" + hashlib.sha256(supplied.encode()).hexdigest()[:16]
     return "ip:" + client_ip(request)
 

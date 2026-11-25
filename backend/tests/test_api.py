@@ -355,19 +355,27 @@ class TestRateLimit:
         for _ in range(3):
             assert client.get("/").status_code == 200
 
-    def test_each_api_key_gets_its_own_limit(self, client, settings):
-        # Two callers behind the same IP, each with their own key, don't share a count.
+    def test_made_up_keys_do_not_get_a_fresh_limit(self, client, settings):
+        # Before 2026-11-25 each new key got its own count, so with no ROUTER_API_KEY
+        # (the public demo) "X-API-Key: junk1", "junk2", ... skipped the limit entirely.
+        settings.rate_limit = "3/minute"
+        codes = [chat(client, headers={"X-API-Key": f"junk{i}"}).status_code for i in range(5)]
+        assert codes == [200, 200, 200, 429, 429]
+
+    def test_the_configured_key_has_its_own_limit(self, client, settings):
+        # With ROUTER_API_KEY set, the real key's callers don't share the IP's count.
+        settings.router_api_key = "s3cret"
         settings.rate_limit = "2/minute"
-        a = {"X-API-Key": "key-a"}
-        b = {"Authorization": "Bearer key-b"}
-        assert [chat(client, headers=a).status_code for _ in range(3)] == [200, 200, 429]
-        assert [chat(client, headers=b).status_code for _ in range(2)] == [200, 200]
+        good = {"Authorization": "Bearer s3cret"}
+        assert [chat(client, headers=good).status_code for _ in range(3)] == [200, 200, 429]
+        # Wrong keys are refused before they reach the model, whatever the count.
+        assert [chat(client, headers={"X-API-Key": f"guess{i}"}).status_code for i in range(3)] == [401, 401, 401]
 
     def test_requests_without_a_key_are_limited_by_ip(self, client, settings):
         settings.rate_limit = "1/minute"
         assert [chat(client).status_code for _ in range(2)] == [200, 429]
-        # A keyed request from the same IP is counted separately.
-        assert chat(client, headers={"X-API-Key": "key-c"}).status_code == 200
+        # A made-up key from the same IP shares that count.
+        assert chat(client, headers={"X-API-Key": "key-c"}).status_code == 429
 
 
 class TestRateLimitKey:
@@ -377,19 +385,27 @@ class TestRateLimitKey:
                  "client": ("203.0.113.7", 1234)}
         return Request(scope)
 
-    def test_key_is_hashed_never_raw(self):
+    def test_key_is_hashed_never_raw(self, settings):
         from app.security import rate_limit_key
+        settings.router_api_key = "super-secret"
         k = rate_limit_key(self._request({"X-API-Key": "super-secret"}))
         assert k.startswith("key:") and "super-secret" not in k
 
-    def test_bearer_and_header_forms_match(self):
+    def test_bearer_and_header_forms_match(self, settings):
         from app.security import rate_limit_key
+        settings.router_api_key = "abc"
         assert rate_limit_key(self._request({"X-API-Key": "abc"})) == \
             rate_limit_key(self._request({"Authorization": "Bearer abc"}))
 
     def test_falls_back_to_ip(self):
         from app.security import rate_limit_key
         assert rate_limit_key(self._request({})) == "ip:203.0.113.7"
+
+    def test_an_unknown_key_counts_against_the_ip(self, settings):
+        from app.security import rate_limit_key
+        assert rate_limit_key(self._request({"X-API-Key": "made-up"})) == "ip:203.0.113.7"
+        settings.router_api_key = "real"
+        assert rate_limit_key(self._request({"X-API-Key": "wrong"})) == "ip:203.0.113.7"
 
 
 class TestRateLimitStorage:
